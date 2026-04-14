@@ -39,6 +39,16 @@ async fn get_context(session_id: String) -> Result<Option<context::ContextInfo>,
 }
 
 #[tauri::command]
+async fn dismiss_session(pid: u32) -> Result<(), String> {
+    sessions::dismiss_session(pid)
+}
+
+#[tauri::command]
+async fn clean_ghost_sessions() -> Result<u32, String> {
+    Ok(sessions::clean_ghost_sessions())
+}
+
+#[tauri::command]
 async fn trigger_compact(pid: u32) -> Result<String, String> {
     compact::trigger_compact(pid)
 }
@@ -225,6 +235,8 @@ fn main() {
             list_sessions,
             get_context,
             trigger_compact,
+            dismiss_session,
+            clean_ghost_sessions,
             respond_permission,
             get_pending_permissions,
             get_usage,

@@ -12,6 +12,8 @@ pub struct SessionInfo {
     pub alive: bool,
     pub name: String,
     pub duration_mins: u64,
+    pub last_activity_mins: u64,
+    pub status: String, // "active", "idle", "ghost"
 }
 
 #[derive(Debug, Deserialize)]
@@ -161,6 +163,69 @@ fn short_path(cwd: &str, entrypoint: Option<&str>) -> String {
     }
 }
 
+/// Get minutes since JSONL file was last modified (proxy for session activity)
+fn get_last_activity_mins(session_id: &str) -> u64 {
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return u64::MAX,
+    };
+    let projects_base = home.join(".claude").join("projects");
+    let jsonl_name = format!("{}.jsonl", session_id);
+
+    // Scan project dirs for this session's JSONL
+    if let Ok(entries) = std::fs::read_dir(&projects_base) {
+        for entry in entries.flatten() {
+            let candidate = entry.path().join(&jsonl_name);
+            if candidate.exists() {
+                if let Ok(meta) = std::fs::metadata(&candidate) {
+                    if let Ok(modified) = meta.modified() {
+                        let elapsed = modified.elapsed().unwrap_or_default();
+                        return (elapsed.as_secs() / 60) as u64;
+                    }
+                }
+            }
+        }
+    }
+    u64::MAX // No JSONL found, treat as very old
+}
+
+/// Determine session status based on activity and context
+fn compute_status(last_activity_mins: u64, pct: f64) -> String {
+    if last_activity_mins <= 5 {
+        "active".to_string()
+    } else if last_activity_mins <= 15 || pct >= 15.0 {
+        "idle".to_string()
+    } else {
+        "ghost".to_string()
+    }
+}
+
+/// Dismiss a session by deleting its session file
+pub fn dismiss_session(pid: u32) -> Result<(), String> {
+    let dir = sessions_dir().ok_or("Sessions dir not found")?;
+    let filename = format!("{}.json", pid);
+    let path = dir.join(&filename);
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| format!("Failed to delete {}: {}", filename, e))
+    } else {
+        Err(format!("Session file {} not found", filename))
+    }
+}
+
+/// Clean all ghost sessions, return count deleted
+pub fn clean_ghost_sessions() -> u32 {
+    let sessions = list_sessions();
+    let mut count = 0;
+    for s in sessions {
+        if s.status == "ghost" {
+            if dismiss_session(s.pid).is_ok() {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
 pub fn list_sessions() -> Vec<SessionInfo> {
     let dir = match sessions_dir() {
         Some(d) => d,
@@ -204,6 +269,12 @@ pub fn list_sessions() -> Vec<SessionInfo> {
                             .or_else(|| read_custom_title(&sf.session_id, &sf.cwd))
                             .unwrap_or_else(|| short_path(&sf.cwd, sf.entrypoint.as_deref()));
 
+                        let last_activity_mins = get_last_activity_mins(&sf.session_id);
+                        // Status needs context %, but we don't have it here.
+                        // Use a rough heuristic: ghost if idle 15+ min. Frontend
+                        // refines with real context % from get_context().
+                        let status = compute_status(last_activity_mins, 50.0);
+
                         sessions.push(SessionInfo {
                             pid: sf.pid,
                             session_id: sf.session_id,
@@ -212,6 +283,8 @@ pub fn list_sessions() -> Vec<SessionInfo> {
                             alive,
                             name,
                             duration_mins,
+                            last_activity_mins,
+                            status,
                         });
                     }
                 }

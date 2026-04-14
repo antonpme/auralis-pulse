@@ -207,6 +207,60 @@ body {
 /* Session card */
 .session-card {
   composes: card;
+  transition: opacity 0.3s ease;
+}
+
+/* Session states */
+.session-card.idle {
+  opacity: 0.65;
+  border-color: rgba(255, 220, 0, 0.08);
+}
+.session-card.ghost {
+  opacity: 0.4;
+  border-color: rgba(255, 50, 80, 0.08);
+}
+
+/* Status badge (inline with session name) */
+.status-badge {
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 5px;
+  margin-left: 6px;
+  font-family: "Consolas", monospace;
+  letter-spacing: 0.06em;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+.status-badge.idle {
+  color: #ffdc00;
+  border: 1px solid rgba(255, 220, 0, 0.25);
+  background: rgba(255, 220, 0, 0.06);
+}
+.status-badge.ghost {
+  color: #ff3250;
+  border: 1px solid rgba(255, 50, 80, 0.2);
+  background: rgba(255, 50, 80, 0.06);
+}
+
+/* Session info row (model/duration/tokens left, PID right) */
+.session-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.session-info-left {
+  font-size: 10px;
+  color: #777;
+  font-family: "Consolas", monospace;
+}
+
+.session-info-right {
+  font-size: 9px;
+  color: #555;
+  font-family: "Consolas", monospace;
+  white-space: nowrap;
 }
 
 /* Context legend */
@@ -217,7 +271,7 @@ body {
   letter-spacing: 0.02em;
 }
 
-/* Session footer (path + compact) */
+/* Session footer (path + actions) */
 .session-footer {
   display: flex;
   align-items: center;
@@ -225,14 +279,19 @@ body {
   margin-top: 2px;
 }
 
+.session-actions {
+  display: flex;
+  gap: 4px;
+}
+
 .session-path {
-  font-size: 9px;
-  color: #777;
+  font-size: 11px;
+  color: #999;
   font-family: "Consolas", monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 220px;
 }
 
 /* ===== UNIFIED BUTTON BASE ===== */
@@ -265,6 +324,33 @@ body {
 .action-btn:hover {
   background: rgba(0, 255, 136, 0.12);
   box-shadow: 0 0 8px rgba(0, 255, 136, 0.1);
+}
+
+/* Dismiss button (red-tinted) */
+.dismiss-btn {
+  background: rgba(255, 50, 80, 0.06);
+  border-color: rgba(255, 50, 80, 0.15);
+  color: #ff3250;
+}
+.dismiss-btn:hover {
+  background: rgba(255, 50, 80, 0.12);
+  box-shadow: 0 0 8px rgba(255, 50, 80, 0.1);
+}
+
+/* Clean ghosts button (header) */
+.clean-btn {
+  background: rgba(255, 50, 80, 0.06);
+  border: 1px solid rgba(255, 50, 80, 0.15);
+  color: #ff3250;
+  font-size: 9px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-family: "Consolas", monospace;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.clean-btn:hover {
+  background: rgba(255, 50, 80, 0.12);
 }
 
 /* Permission card */
