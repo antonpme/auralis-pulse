@@ -102,6 +102,11 @@ async fn refresh_usage(
 }
 
 #[tauri::command]
+async fn get_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
 async fn set_tray_metric(
     metric: String,
     state: tauri::State<'_, TrayMetricState>,
@@ -241,7 +246,8 @@ fn main() {
             get_pending_permissions,
             get_usage,
             refresh_usage,
-            set_tray_metric
+            set_tray_metric,
+            get_version
         ])
         .setup(move |app| {
             // Set app handle in server state
@@ -270,6 +276,12 @@ fn main() {
             }
 
             // Tray setup
+            let version = env!("CARGO_PKG_VERSION");
+            let about = MenuItem::with_id(
+                app, "about",
+                &format!("Auralis Pulse v{}", version),
+                false, None::<&str>,
+            )?;
             let is_autostart = app.autolaunch().is_enabled().unwrap_or(false);
             let autostart_item = CheckMenuItem::with_id(
                 app,
@@ -280,7 +292,7 @@ fn main() {
                 None::<&str>,
             )?;
             let quit = MenuItem::with_id(app, "quit", "Quit Pulse", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&autostart_item, &quit])?;
+            let menu = Menu::with_items(app, &[&about, &autostart_item, &quit])?;
 
             let icon_pixels = create_tray_icon(0, false);
             let icon = Image::new_owned(icon_pixels, 16, 16);

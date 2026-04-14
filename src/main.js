@@ -267,10 +267,12 @@ async function render() {
     const [leftHtml, rightHtml] = await Promise.all([renderLeftPanel(), renderRightPanel()]);
 
     let usageTier = "";
+    let appVersion = "";
     try {
       const data = await invoke("get_usage");
       if (data && data.tier) usageTier = formatTier(data.tier);
     } catch (_) {}
+    try { appVersion = await invoke("get_version"); } catch (_) {}
 
     app.innerHTML = `
       <div class="header">
@@ -279,7 +281,7 @@ async function render() {
             <h1>AURALIS PULSE</h1>
             ${usageTier ? `<span class="tier-label">${usageTier}</span>` : ""}
           </div>
-          <span class="header-subtitle">COMPANION FOR CLAUDE CODE</span>
+          <span class="header-subtitle">COMPANION FOR CLAUDE CODE${appVersion ? ` · v${appVersion}` : ""}</span>
         </div>
         <div class="header-right">
           ${lastGhostCount > 0 ? `<button class="clean-btn" data-action="clean-ghosts" title="Remove ${lastGhostCount} ghost session${lastGhostCount > 1 ? 's' : ''}">CLEAN</button>` : ""}
