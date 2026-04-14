@@ -83,11 +83,13 @@ For permissions, a lightweight HTTP server runs on `127.0.0.1:59428`. The CLI ho
 
 ## Roadmap
 
-- [ ] Themes (dark, light, custom color schemes)
-- [ ] macOS and Linux support
-- [ ] Session activity graphs
-- [ ] Keyboard shortcuts for permission responses
-- [ ] GitHub releases with auto-update
+**v1.1** - Settings panel, themes (Cyberpunk, Glassmorphism, Light, macOS), keyboard shortcuts for permissions
+
+**v1.2** - macOS and Linux builds, auto-update, GitHub Actions CI
+
+**v1.3** - Session activity graphs, cost estimation, plugin system
+
+Full roadmap: [ROADMAP.md](ROADMAP.md)
 
 ## Contributing
 
