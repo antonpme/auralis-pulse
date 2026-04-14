@@ -1,0 +1,437 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #1C1C1C;
+  color: #c8ccd0;
+  overflow: hidden;
+  user-select: none;
+}
+
+#app {
+  background: #1C1C1C;
+  border: 1px solid rgba(0, 255, 136, 0.15);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 6px 18px;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header h1 {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #00ff88;
+  text-shadow: 0 0 16px rgba(0, 255, 136, 0.25);
+}
+
+.header-subtitle {
+  font-size: 9px;
+  color: #555;
+  font-family: "Consolas", monospace;
+  letter-spacing: 0.05em;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tier-label {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  color: #00cc6a;
+  border: 1px solid rgba(0, 255, 136, 0.15);
+  background: rgba(0, 255, 136, 0.06);
+  letter-spacing: 0.06em;
+  font-family: "Consolas", monospace;
+}
+
+.refresh-icon-btn {
+  background: rgba(0, 255, 136, 0.06);
+  border: 1px solid rgba(0, 255, 136, 0.15);
+  color: #00ff88;
+  font-size: 13px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: "Consolas", monospace;
+}
+.refresh-icon-btn:hover { background: rgba(0, 255, 136, 0.12); }
+
+/* Split layout */
+.split-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  margin-top: 8px;
+  border-top: 1px solid rgba(0, 255, 136, 0.06);
+}
+
+.panel-left {
+  flex: 1;
+  padding: 12px 12px 12px 18px;
+  overflow-y: auto;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-right {
+  width: 300px;
+  min-width: 300px;
+  padding: 12px 18px 12px 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Scrollbar */
+.panel-left::-webkit-scrollbar,
+.panel-right::-webkit-scrollbar { width: 3px; }
+.panel-left::-webkit-scrollbar-thumb,
+.panel-right::-webkit-scrollbar-thumb { background: rgba(0, 255, 136, 0.1); }
+
+/* Section label */
+.section-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 2px;
+}
+
+.section-label--warning {
+  color: #ffdc00;
+  margin-top: 4px;
+}
+
+/* ===== UNIFIED BAR STYLE (used by both panels) ===== */
+.bar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.bar-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.bar-value {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-family: "Consolas", monospace;
+}
+
+.bar-bg {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.bar-fill {
+  height: 100%;
+  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  min-width: 2px;
+}
+
+.bar-sub {
+  font-size: 10px;
+  color: #777;
+  font-family: "Consolas", monospace;
+}
+
+/* Bar colors */
+.bar-fill.green { background: #00ff88; box-shadow: 0 0 6px rgba(0, 255, 136, 0.5); }
+.bar-fill.yellow { background: #ffdc00; box-shadow: 0 0 6px rgba(255, 220, 0, 0.5); }
+.bar-fill.orange { background: #ff7814; box-shadow: 0 0 6px rgba(255, 120, 20, 0.5); }
+.bar-fill.red { background: #ff3250; box-shadow: 0 0 6px rgba(255, 50, 80, 0.5); }
+
+.bar-value.green { color: #00ff88; }
+.bar-value.yellow { color: #ffdc00; }
+.bar-value.orange { color: #ff7814; }
+.bar-value.red { color: #ff3250; }
+
+/* ===== UNIFIED CARD STYLE ===== */
+.card {
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.015);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Session card */
+.session-card {
+  composes: card;
+}
+
+/* Context legend */
+.context-legend {
+  font-size: 9px;
+  color: #777;
+  font-family: "Consolas", monospace;
+  letter-spacing: 0.02em;
+}
+
+/* Session footer (path + compact) */
+.session-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.session-path {
+  font-size: 9px;
+  color: #777;
+  font-family: "Consolas", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+/* ===== UNIFIED BUTTON BASE ===== */
+.btn {
+  font-size: 9px;
+  padding: 4px 10px;
+  border: 1px solid;
+  cursor: pointer;
+  font-family: "Consolas", monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Action button (Compact, etc.) */
+.action-btn {
+  background: rgba(0, 255, 136, 0.06);
+  border: 1px solid rgba(0, 255, 136, 0.15);
+  color: #00ff88;
+  font-size: 9px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: "Consolas", monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 2px;
+  align-self: flex-start;
+}
+.action-btn:hover {
+  background: rgba(0, 255, 136, 0.12);
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.1);
+}
+
+/* Permission card */
+.permission-card {
+  border: 1px solid rgba(255, 165, 0, 0.15);
+  background: rgba(255, 165, 0, 0.03);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.permission-tool {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffdc00;
+}
+
+.permission-detail {
+  font-size: 9px;
+  color: #999;
+  font-family: "Consolas", monospace;
+  word-break: break-all;
+}
+
+.permission-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.perm-btn {
+  font-size: 9px;
+  padding: 4px 10px;
+  border: 1px solid;
+  cursor: pointer;
+  font-family: "Consolas", monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.perm-btn.allow {
+  background: rgba(0, 255, 136, 0.08);
+  border-color: rgba(0, 255, 136, 0.2);
+  color: #00ff88;
+}
+.perm-btn.allow:hover { background: rgba(0, 255, 136, 0.15); }
+
+.perm-btn.secondary {
+  opacity: 0.7;
+  font-size: 8px;
+}
+
+.perm-btn.deny {
+  background: rgba(255, 50, 80, 0.08);
+  border-color: rgba(255, 50, 80, 0.2);
+  color: #ff3250;
+}
+.perm-btn.deny:hover { background: rgba(255, 50, 80, 0.15); }
+
+.perm-btn.dismiss {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #777;
+  font-size: 9px;
+  padding: 4px 8px;
+  margin-left: auto;
+}
+.perm-btn.dismiss:hover { background: rgba(255, 255, 255, 0.08); color: #999; }
+
+/* Extra usage */
+.extra-inline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.extra-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: #999;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.extra-value {
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: "Consolas", monospace;
+}
+
+.dollar { color: #777; font-weight: 400; }
+.extra-sep { color: #777; margin: 0 2px; }
+
+/* Metric selector (tray icon config) */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.metric-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: #999;
+  font-size: 9px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: "Consolas", monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.metric-btn + .metric-btn { border-left: none; }
+.metric-btn:hover { background: rgba(0, 255, 136, 0.04); }
+.metric-btn.active {
+  background: rgba(0, 255, 136, 0.1);
+  border-color: rgba(0, 255, 136, 0.2);
+  color: #00ff88;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 20px;
+  color: #555;
+  font-size: 10px;
+}
+
+/* Loading */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  gap: 8px;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 255, 136, 0.1);
+  border-top-color: #00ff88;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text {
+  font-size: 9px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: "Consolas", monospace;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.2s ease forwards; }

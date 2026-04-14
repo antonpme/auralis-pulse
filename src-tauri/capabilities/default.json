@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "description": "Auralis Pulse default capabilities",
+  "windows": ["*"],
+  "permissions": [
+    "core:default",
+    "autostart:default",
+    "notification:default"
+  ]
+}
