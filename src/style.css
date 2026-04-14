@@ -63,13 +63,15 @@ body {
 
 .tier-label {
   font-size: 9px;
-  font-weight: 700;
-  padding: 2px 6px;
-  color: #00cc6a;
-  border: 1px solid rgba(0, 255, 136, 0.15);
-  background: rgba(0, 255, 136, 0.06);
+  font-weight: 800;
+  padding: 3px 8px 4px 8px;
+  color: #1C1C1C;
+  border: none;
+  background: #888;
+  border-radius: 9px;
   letter-spacing: 0.06em;
   font-family: "Consolas", monospace;
+  line-height: 1;
 }
 
 .refresh-icon-btn {

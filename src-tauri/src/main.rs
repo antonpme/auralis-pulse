@@ -517,6 +517,16 @@ fn main() {
                     let _ = window.hide();
                 }
             }
+            // Auto-hide when window loses focus (click outside)
+            tauri::RunEvent::WindowEvent {
+                event: tauri::WindowEvent::Focused(false),
+                label,
+                ..
+            } => {
+                if let Some(window) = app.get_webview_window(&label) {
+                    let _ = window.hide();
+                }
+            }
             _ => {}
         });
 }

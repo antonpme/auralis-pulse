@@ -279,7 +279,7 @@ async function render() {
             <h1>AURALIS PULSE</h1>
             ${usageTier ? `<span class="tier-label">${usageTier}</span>` : ""}
           </div>
-          <span class="header-subtitle">companion for Claude Code</span>
+          <span class="header-subtitle">COMPANION FOR CLAUDE CODE</span>
         </div>
         <div class="header-right">
           ${lastGhostCount > 0 ? `<button class="clean-btn" data-action="clean-ghosts" title="Remove ${lastGhostCount} ghost session${lastGhostCount > 1 ? 's' : ''}">CLEAN</button>` : ""}
