@@ -18,7 +18,7 @@ Stop guessing how much context is left. Stop missing permission popups buried in
 
 ## Screenshot
 
-![Auralis Pulse](https://raw.githubusercontent.com/antonpme/auralis-pulse/main/screenshot.png)
+![Auralis Pulse](https://raw.githubusercontent.com/antonpme/auralis-pulse/main/screenshot.jpg)
 
 ## Install
 
