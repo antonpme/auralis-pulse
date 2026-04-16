@@ -394,8 +394,8 @@ fn main() {
             let icon_pixels = create_tray_icon(0, false);
             let icon = Image::new_owned(icon_pixels, 16, 16);
 
-            let popup_w = 780.0;
-            let popup_h = 500.0;
+            let popup_w = 810.0;
+            let popup_h = 520.0;
 
             let _tray = TrayIconBuilder::with_id("pulse-tray")
                 .icon(icon)

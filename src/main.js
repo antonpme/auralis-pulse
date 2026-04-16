@@ -15,11 +15,13 @@ const settings = {
   theme: (savedTheme && validThemes.includes(savedTheme)) ? savedTheme : "cyberpunk",
   alwaysOnTop: localStorage.getItem("pulse-always-on-top") !== "false",
   autoHide: localStorage.getItem("pulse-auto-hide") !== "false",
+  filter: localStorage.getItem("pulse-filter") || "all",
+  sort: localStorage.getItem("pulse-sort") || "default",
 };
 
 const THEME_SIZES = {
-  cyberpunk: { w: 780, h: 500 },
-  glass: { w: 820, h: 530 },
+  cyberpunk: { w: 810, h: 520 },
+  glass: { w: 810, h: 520 },
   light: { w: 810, h: 520 },
 };
 
@@ -27,9 +29,7 @@ function applyTheme(name) {
   settings.theme = name;
   document.documentElement.setAttribute("data-theme", name);
   localStorage.setItem("pulse-theme", name);
-  // Resize window to fit theme
-  const size = THEME_SIZES[name] || THEME_SIZES.cyberpunk;
-  try { invoke("resize_window", { width: size.w, height: size.h }); } catch (_) {}
+  // All themes now share same window size (810x520) - no resize needed.
 }
 
 function saveSetting(key, value) {
@@ -92,13 +92,13 @@ function formatTier(raw) {
 
 // ---- UNIFIED BAR ----
 
-function renderBar(label, pct, subText) {
+function renderBar(label, pct, subText, valuePrefix = "") {
   const color = getColor(pct);
   return `
     <div class="bar-item">
       <div class="bar-header">
         <span class="bar-label">${label}</span>
-        <span class="bar-value ${color}">${pct}%</span>
+        <span class="bar-value ${color}">${valuePrefix}${pct}%</span>
       </div>
       <div class="bar-bg">
         <div class="bar-fill ${color}" style="width: ${Math.max(pct, 1)}%"></div>
@@ -129,7 +129,7 @@ function renderStatusBadge(status) {
   return `<span class="status-badge ${status}">${status.toUpperCase()}</span>`;
 }
 
-function renderSession(session, ctx) {
+function renderSession(session, ctx, index) {
   const pct = ctx ? Math.round(ctx.pct) : 0;
   const model = ctx ? ctx.model : "...";
   const used = ctx ? formatTokens(ctx.used_tokens) : "...";
@@ -140,13 +140,17 @@ function renderSession(session, ctx) {
   const infoLeft = `${model}, ${formatDuration(session.duration_mins)}, ${used} / ${max}`;
   const legendParts = [];
   if (ctx && ctx.turn_count > 0) legendParts.push(`${ctx.turn_count} turns`);
-  if (ctx && ctx.compaction_count > 0) legendParts.push(`${ctx.compaction_count}x compacted`);
   if (ctx && pct > 60) {
     const autocompactPct = Math.round(((ctx.max_tokens - 33000) / ctx.max_tokens) * 100);
     legendParts.push(`compact at ${autocompactPct}%`);
   }
   const infoRight = `PID ${session.pid}`;
-  const barLabel = session.name + renderStatusBadge(status);
+  const numberPrefix = index ? `<span class="session-number">#${index}</span> ` : "";
+  const barLabel = numberPrefix + session.name + renderStatusBadge(status);
+  // Compaction count next to percentage (saves a line)
+  const compactPrefix = ctx && ctx.compaction_count > 0
+    ? `<span class="compact-indicator">&#x21BB;${ctx.compaction_count} · </span>`
+    : "";
 
   let actions = `<button class="action-icon-btn" data-pid="${session.pid}" data-action="compact" title="Compact session">&#x21BB;</button>`;
   if (status !== "active") {
@@ -155,7 +159,7 @@ function renderSession(session, ctx) {
 
   return `
     <div class="session-card ${status} fade-in">
-      ${renderBar(barLabel, pct, "")}
+      ${renderBar(barLabel, pct, "", compactPrefix)}
       <div class="session-info-row">
         <span class="session-info-left">${infoLeft}</span>
         <span class="session-info-right">${infoRight}</span>
@@ -194,6 +198,100 @@ function renderPermission(perm) {
   `;
 }
 
+// ---- FILTER + SORT HELPERS ----
+
+function projectNameFromCwd(cwd) {
+  if (!cwd) return "(unknown)";
+  const parts = cwd.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || cwd;
+}
+
+function filterSessions(sessions, contexts, filter) {
+  if (!filter || filter === "all") return sessions;
+  if (filter.startsWith("status:")) {
+    const target = filter.slice(7);
+    return sessions.filter(s => refineStatus(s, contexts[s.session_id]) === target);
+  }
+  if (filter.startsWith("project:")) {
+    const target = filter.slice(8);
+    return sessions.filter(s => s.cwd === target);
+  }
+  return sessions;
+}
+
+function sortSessions(sessions, contexts, sort) {
+  const arr = [...sessions];
+  switch (sort) {
+    case "context":
+      arr.sort((a, b) => (contexts[b.session_id]?.pct || 0) - (contexts[a.session_id]?.pct || 0));
+      break;
+    case "duration":
+      arr.sort((a, b) => b.duration_mins - a.duration_mins);
+      break;
+    case "activity":
+      arr.sort((a, b) => (a.last_activity_mins || 0) - (b.last_activity_mins || 0));
+      break;
+    case "alphabetical":
+      arr.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      break;
+    default:
+      break;
+  }
+  return arr;
+}
+
+function renderSessionControls(sessions, contexts, currentFilter, currentSort) {
+  // Build status counts
+  const statusCounts = { active: 0, idle: 0, ghost: 0 };
+  for (const s of sessions) {
+    const st = refineStatus(s, contexts[s.session_id]);
+    if (statusCounts[st] !== undefined) statusCounts[st]++;
+  }
+
+  // Build project counts
+  const projectMap = new Map();
+  for (const s of sessions) {
+    const cwd = s.cwd || "(unknown)";
+    projectMap.set(cwd, (projectMap.get(cwd) || 0) + 1);
+  }
+
+  // Filter options
+  const filterOpts = [`<option value="all"${currentFilter === "all" ? " selected" : ""}>All (${sessions.length})</option>`];
+  filterOpts.push(`<optgroup label="Status">`);
+  for (const st of ["active", "idle", "ghost"]) {
+    if (statusCounts[st] > 0) {
+      const val = `status:${st}`;
+      filterOpts.push(`<option value="${val}"${currentFilter === val ? " selected" : ""}>${st[0].toUpperCase() + st.slice(1)} (${statusCounts[st]})</option>`);
+    }
+  }
+  filterOpts.push(`</optgroup>`);
+  if (projectMap.size > 1) {
+    filterOpts.push(`<optgroup label="Project">`);
+    for (const [cwd, count] of projectMap) {
+      const val = `project:${cwd}`;
+      const name = projectNameFromCwd(cwd);
+      filterOpts.push(`<option value="${val}"${currentFilter === val ? " selected" : ""}>${name} (${count})</option>`);
+    }
+    filterOpts.push(`</optgroup>`);
+  }
+
+  // Sort options
+  const sortOpts = [
+    ["default", "Default"],
+    ["context", "By context %"],
+    ["duration", "By duration"],
+    ["activity", "By last activity"],
+    ["alphabetical", "Alphabetical"],
+  ].map(([v, label]) => `<option value="${v}"${currentSort === v ? " selected" : ""}>${label}</option>`).join("");
+
+  return `
+    <div class="sessions-controls">
+      <select class="session-select" data-type="filter" title="Filter sessions">${filterOpts.join("")}</select>
+      <select class="session-select" data-type="sort" title="Sort sessions">${sortOpts}</select>
+    </div>
+  `;
+}
+
 async function renderLeftPanel() {
   const sessions = await invoke("list_sessions");
   const pending = await invoke("get_pending_permissions");
@@ -208,17 +306,38 @@ async function renderLeftPanel() {
 
   lastGhostCount = sessions.filter(s => refineStatus(s, contexts[s.session_id]) === "ghost").length;
 
-  let html = `<div class="section-label">SESSIONS (${sessions.length})</div>`;
+  // Apply filter + sort
+  const filtered = filterSessions(sessions, contexts, settings.filter);
+  const sorted = sortSessions(filtered, contexts, settings.sort);
+
+  const totalCount = sessions.length;
+  const viewCount = sorted.length;
+  const headerText = viewCount < totalCount
+    ? `SESSIONS (${viewCount} / ${totalCount})`
+    : `SESSIONS (${totalCount})`;
+
+  const controls = totalCount > 0
+    ? renderSessionControls(sessions, contexts, settings.filter, settings.sort)
+    : "";
+
+  let html = `
+    <div class="sessions-header">
+      <span class="section-label">${headerText}</span>
+      ${controls}
+    </div>
+  `;
 
   if (pending.length > 0) {
     html += `<div class="section-label section-label--warning">PENDING (${pending.length})</div>`;
     html += pending.map(renderPermission).join("");
   }
 
-  if (sessions.length === 0) {
+  if (totalCount === 0) {
     html += `<div class="empty-state">No active CLI sessions</div>`;
+  } else if (viewCount === 0) {
+    html += `<div class="empty-state">No sessions match current filter</div>`;
   } else {
-    html += sessions.map(s => renderSession(s, contexts[s.session_id])).join("");
+    html += sorted.map((s, i) => renderSession(s, contexts[s.session_id], i + 1)).join("");
   }
 
   return html;
@@ -506,11 +625,24 @@ document.addEventListener("click", async (e) => {
   }
 });
 
-// Change events (toggles + radio)
+// Change events (toggles + radio + session selects)
 document.addEventListener("change", async (e) => {
   // Theme radio
   if (e.target.name === "theme") {
     applyTheme(e.target.value);
+    render();
+    return;
+  }
+
+  // Session filter/sort selects
+  if (e.target.classList && e.target.classList.contains("session-select")) {
+    const type = e.target.dataset.type;
+    const value = e.target.value;
+    if (type === "filter") {
+      saveSetting("filter", value);
+    } else if (type === "sort") {
+      saveSetting("sort", value);
+    }
     render();
     return;
   }

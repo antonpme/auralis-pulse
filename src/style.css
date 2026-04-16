@@ -42,12 +42,14 @@
   --radius-badge: 0px;
   --radius-bar: 0px;
   --padding-card: 10px;
-  --gap-sections: 10px;
+  --gap-sections: 14px;
   --card-shadow: none;
   /* Typography/sizing tokens */
   --font-scale: 1;
   --btn-padding: 4px 10px;
   --btn-gap: 4px;
+  --btn-height: 26px;
+  --btn-h-padding: 10px;
 }
 
 [data-theme="glass"] {
@@ -92,12 +94,14 @@
   --radius-badge: 8px;
   --radius-bar: 3px;
   --padding-card: 14px;
-  --gap-sections: 12px;
+  --gap-sections: 14px;
   --card-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
   /* Larger fonts and spacing */
   --font-scale: 1.08;
   --btn-padding: 5px 12px;
   --btn-gap: 6px;
+  --btn-height: 26px;
+  --btn-h-padding: 12px;
 }
 
 [data-theme="light"] {
@@ -143,11 +147,13 @@
   --radius-badge: 6px;
   --radius-bar: 3px;
   --padding-card: 14px;
-  --gap-sections: 12px;
+  --gap-sections: 14px;
   --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   --font-scale: 1.04;
   --btn-padding: 5px 12px;
   --btn-gap: 6px;
+  --btn-height: 26px;
+  --btn-h-padding: 12px;
 }
 
 
@@ -205,7 +211,7 @@ body {
 
 .header-subtitle {
   font-size: 9px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-family: "Consolas", monospace;
   letter-spacing: 0.05em;
 }
@@ -236,14 +242,16 @@ body {
   border: 1px solid var(--accent-border);
   color: var(--accent);
   font-size: 13px;
-  width: 26px;
-  height: 26px;
-  display: flex;
+  width: var(--btn-height);
+  height: var(--btn-height);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   font-family: "Consolas", monospace;
   border-radius: var(--radius-btn);
+  line-height: 1;
+  padding: 0;
 }
 .header-icon-btn:hover,
 .refresh-icon-btn:hover { background: var(--accent-hover); }
@@ -268,8 +276,8 @@ body {
 }
 
 .panel-right {
-  width: 280px;
-  min-width: 280px;
+  width: 240px;
+  min-width: 240px;
   padding: 12px 18px 12px 12px;
   overflow-y: auto;
   display: flex;
@@ -299,6 +307,71 @@ body {
 .section-label--warning {
   color: var(--warning);
   margin-top: 4px;
+}
+
+/* Sessions header with filter/sort controls */
+.sessions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.sessions-header .section-label {
+  margin-bottom: 0;
+}
+
+.sessions-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.session-select {
+  background: var(--btn-muted-bg);
+  border: 1px solid var(--btn-muted-border);
+  color: var(--text-secondary);
+  font-size: 9px;
+  height: var(--btn-height);
+  padding: 0 20px 0 var(--btn-h-padding);
+  font-family: "Consolas", monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+                    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 9px) 50%, calc(100% - 6px) 50%;
+  background-size: 3px 3px, 3px 3px;
+  background-repeat: no-repeat;
+  outline: none;
+  line-height: 1;
+  box-sizing: border-box;
+}
+.session-select:hover {
+  background-color: var(--btn-muted-hover);
+  color: var(--text-primary);
+}
+.session-select:focus {
+  border-color: var(--accent-border);
+}
+.session-select option,
+.session-select optgroup {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "Consolas", monospace;
+}
+
+/* Session number badge */
+.session-number {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  font-weight: 500;
+  margin-right: 2px;
+  opacity: 0.7;
 }
 
 /* ===== UNIFIED BAR STYLE ===== */
@@ -366,7 +439,7 @@ body {
   padding: var(--padding-card);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   border-radius: var(--radius-card);
   box-shadow: var(--card-shadow);
 }
@@ -417,14 +490,14 @@ body {
 }
 
 .session-info-left {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-muted);
   font-family: "Consolas", monospace;
 }
 
 .session-info-right {
-  font-size: 9px;
-  color: var(--text-dim);
+  font-size: 10px;
+  color: var(--text-muted);
   font-family: "Consolas", monospace;
   white-space: nowrap;
 }
@@ -486,14 +559,16 @@ body {
   border: 1px solid var(--accent-border);
   color: var(--accent);
   font-size: 12px;
-  width: 24px;
-  height: 24px;
-  display: flex;
+  width: var(--btn-height);
+  height: var(--btn-height);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   border-radius: var(--radius-btn);
   flex-shrink: 0;
+  line-height: 1;
+  padding: 0;
 }
 .action-icon-btn:hover {
   background: var(--accent-hover);
@@ -604,6 +679,12 @@ body {
 }
 .perm-btn.dismiss:hover { background: var(--accent-bg); color: var(--text-secondary); }
 
+.compact-indicator {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+
 .perm-btn kbd {
   font-family: inherit;
   font-size: 7px;
@@ -655,13 +736,18 @@ body {
   border: 1px solid var(--btn-muted-border);
   color: var(--text-secondary);
   font-size: 9px;
-  padding: var(--btn-padding);
+  height: var(--btn-height);
+  padding: 0 var(--btn-h-padding);
   cursor: pointer;
   font-family: "Consolas", monospace;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-radius: var(--radius-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 .metric-btn:hover { background: var(--btn-muted-hover); }
 .metric-btn.active {

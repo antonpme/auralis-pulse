@@ -6,7 +6,9 @@ Stop guessing how much context is left. Stop missing permission popups buried in
 
 ## What it does
 
-**Session monitoring** - See every active Claude Code session with token usage, model info, duration, compaction count, and PID. Sessions are color-coded by context fill level (green, yellow, orange, red).
+**Session monitoring** - See every active Claude Code session with token usage, model info, duration, compaction count, and PID. Sessions are color-coded by context fill level (green, yellow, orange, red). Numbered #1, #2, #3 for quick reference.
+
+**Filter & sort** - Filter sessions by status (active/idle/ghost) or project (cwd). Sort by context %, duration, last activity, or alphabetically. State persisted across restarts.
 
 **Permission forwarding** - When Claude Code asks for permission (Bash, Write, Edit), Pulse catches it via hook, shows a desktop notification with sound, and lets you approve or deny from the tray popup. Keyboard shortcuts: **Y** allow, **A** always allow, **N** deny.
 
@@ -16,9 +18,9 @@ Stop guessing how much context is left. Stop missing permission popups buried in
 
 **Settings panel** - Always on top, auto-hide on blur, autostart, tray metric selector, theme picker. Gear icon in header or from tray menu.
 
-**Ghost detection** - Sessions that go idle or become orphaned are automatically flagged as IDLE or GHOST. Dismiss them individually from the session card.
+**Ghost detection** - Sessions that go idle (>15min) or become orphaned (>60min with low context) are automatically flagged as IDLE or GHOST. Dismiss them individually from the session card.
 
-**Compact trigger** - Hit COMPACT on any session card to send the `/compact` command to that CLI session.
+**Compact trigger** - Hit the compact icon on any session card to send the `/compact` command to that CLI session.
 
 ## Screenshot
 
@@ -87,11 +89,11 @@ For permissions, a lightweight HTTP server runs on `127.0.0.1:59428`. The CLI ho
 
 ## Roadmap
 
-**v1.1** (current) - Settings panel, 3 themes (Cyberpunk, Glass, Light), keyboard shortcuts for permissions (Y/A/N), window positioning via Win32 work area API
+**v1.2** (current) - Filter/sort dropdowns, session numbering, unified button heights, relaxed idle/ghost thresholds, lots of UI polish
 
-**v1.2** - Context window alerts (per-session thresholds, optional auto-compact), session sorting/filtering, session numbering
+**v1.3** - Context window alerts (per-session thresholds, optional auto-compact), configurable keyboard shortcuts
 
-**v1.3** - Cross-platform (macOS, Linux), auto-update, GitHub Actions CI
+**v1.4** - Cross-platform (macOS, Linux), auto-update, GitHub Actions CI
 
 Full roadmap: [ROADMAP.md](ROADMAP.md)
 

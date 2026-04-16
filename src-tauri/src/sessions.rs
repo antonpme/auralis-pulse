@@ -189,11 +189,13 @@ fn get_last_activity_mins(session_id: &str) -> u64 {
     u64::MAX // No JSONL found, treat as very old
 }
 
-/// Determine session status based on activity and context
+/// Determine session status based on activity and context.
+/// Thresholds: active <= 15min, idle <= 60min, ghost > 60min.
+/// Sessions with >= 15% context stay "idle" (likely doing real work).
 fn compute_status(last_activity_mins: u64, pct: f64) -> String {
-    if last_activity_mins <= 5 {
+    if last_activity_mins <= 15 {
         "active".to_string()
-    } else if last_activity_mins <= 15 || pct >= 15.0 {
+    } else if last_activity_mins <= 60 || pct >= 15.0 {
         "idle".to_string()
     } else {
         "ghost".to_string()
