@@ -1,6 +1,6 @@
 # Auralis Pulse - Roadmap
 
-## v1.0.0 (current)
+## v1.0.0
 
 - [x] Session monitoring (token usage, model, duration, PID, compaction count)
 - [x] Permission forwarding via CLI hook (hookSpecificOutput format)
@@ -14,29 +14,54 @@
 - [x] Process name verification (prevents PID reuse false positives)
 - [x] Version display (tray menu + UI subtitle)
 
-## v1.1.0
+## v1.1.0 (current)
 
 ### Settings Panel
-- [ ] Dedicated settings view (tab or slide-out)
-- [ ] Window behavior: always on top toggle
-- [ ] Window behavior: auto-hide on blur toggle
-- [ ] Minimize button in header bar
+- [x] Dedicated settings view (view switching, gear icon)
+- [x] Window behavior: always on top toggle
+- [x] Window behavior: auto-hide on blur toggle
+- [x] Autostart toggle (moved from tray menu)
+- [x] Tray metric selector (5H/WEEK/SONNET)
+- [x] About section with version + GitHub link
 
 ### Themes
-- [ ] CSS custom properties for all colors
-- [ ] Theme: Cyberpunk (current default)
-- [ ] Theme: Glassmorphism (blur, translucency, soft borders)
-- [ ] Theme: Minimal Light (clean, bright, high contrast)
-- [ ] Theme: macOS Neutral (warm grays, subtle shadows)
-- [ ] Theme switcher in settings
-- [ ] Persist theme selection in localStorage
+- [x] CSS custom properties for all colors, shapes, fonts, spacing
+- [x] Theme: Cyberpunk (dark, neon green, sharp corners)
+- [x] Theme: Glassmorphism (dark translucent, rounded, airy, 1.08x font)
+- [x] Theme: Light (white, purple accent, Raycast-inspired, 1.04x font)
+- [x] Theme switcher with radio selector
+- [x] Persist theme + all settings in localStorage
+- [x] Window resize per theme, anchored to bottom-right
 
 ### Quality of Life
-- [ ] Keyboard shortcuts for permissions (Y to allow, N to deny)
-- [ ] Screenshot in README
-- [ ] GitHub Release with attached .exe installer
+- [x] Screenshot in README
+- [x] Icon buttons for compact/dismiss with tooltips
+- [x] Tier badge pill-shaped styling
+- [x] Currency-agnostic extra usage display
+- [ ] Keyboard shortcuts for permissions (Y/N) - in progress
+- [ ] GitHub Release with attached .exe installer - in progress
 
 ## v1.2.0
+
+### Context Window Alerts
+- [ ] Per-session context threshold settings (warning + critical levels, e.g. 70% / 90%)
+- [ ] Visual alert on session card when threshold reached (color change, icon, badge)
+- [ ] System notification on threshold breach
+- [ ] Optional auto-compact trigger when critical threshold reached
+- [ ] Per-session override: allow disabling auto-compact for specific sessions (manual-only)
+- [ ] Default thresholds in settings panel, per-session overrides on session card
+
+### Keyboard Shortcuts
+- [ ] Configurable shortcuts in settings panel
+- [ ] Y/N for permission approve/deny
+- [ ] Navigation between sessions
+
+### Quality of Life
+- [ ] Session numbering (#1, #2, #3) on session cards
+- [ ] Session sorting (by context %, duration, idle time)
+- [ ] Project filter (filter by cwd)
+
+## v1.3.0
 
 ### Cross-Platform
 - [ ] macOS build (.dmg) via GitHub Actions
@@ -50,7 +75,7 @@
 - [ ] Update check on startup + periodic
 - [ ] Update notification in tray menu
 
-## v1.3.0 (ideas)
+## Future (ideas)
 
 - [ ] Session activity timeline/graph
 - [ ] Cost estimation per session (tokens x model pricing)

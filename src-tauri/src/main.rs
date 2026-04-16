@@ -390,11 +390,14 @@ fn main() {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
+                                // Show first, then position - Windows can reset position during show()
+                                let _ = window.show();
+                                let _ = window.set_focus();
                                 // Position from current inner size, anchored to bottom-right
                                 if let Ok(Some(monitor)) = window.primary_monitor() {
                                     let screen = monitor.size();
                                     let scale = monitor.scale_factor();
-                                    let win_size = window.inner_size().unwrap_or(tauri::PhysicalSize::new(
+                                    let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
                                         (popup_w * scale) as u32, (popup_h * scale) as u32
                                     ));
                                     let w = win_size.width as f64 / scale;
@@ -405,8 +408,6 @@ fn main() {
                                         tauri::LogicalPosition::new(x, y),
                                     ));
                                 }
-                                let _ = window.show();
-                                let _ = window.set_focus();
                             }
                             return; // Don't create another window
                         } else {
