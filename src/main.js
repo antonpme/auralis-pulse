@@ -2,8 +2,52 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 const app = document.getElementById("app");
-let currentMetric = "weekly";
+let currentMetric = localStorage.getItem("pulse-tray-metric") || "weekly";
+let currentView = "main"; // "main" | "settings"
 let renderLock = false;
+let lastGhostCount = 0;
+
+// ---- SETTINGS STATE ----
+
+const validThemes = ["cyberpunk", "glass", "light"];
+const savedTheme = localStorage.getItem("pulse-theme");
+const settings = {
+  theme: (savedTheme && validThemes.includes(savedTheme)) ? savedTheme : "cyberpunk",
+  alwaysOnTop: localStorage.getItem("pulse-always-on-top") !== "false",
+  autoHide: localStorage.getItem("pulse-auto-hide") !== "false",
+};
+
+const THEME_SIZES = {
+  cyberpunk: { w: 780, h: 500 },
+  glass: { w: 820, h: 530 },
+  light: { w: 810, h: 520 },
+};
+
+function applyTheme(name) {
+  settings.theme = name;
+  document.documentElement.setAttribute("data-theme", name);
+  localStorage.setItem("pulse-theme", name);
+  // Resize window to fit theme
+  const size = THEME_SIZES[name] || THEME_SIZES.cyberpunk;
+  try { invoke("resize_window", { width: size.w, height: size.h }); } catch (_) {}
+}
+
+function saveSetting(key, value) {
+  settings[key] = value;
+  localStorage.setItem(`pulse-${key.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}`, String(value));
+}
+
+// Apply saved theme on load
+applyTheme(settings.theme);
+
+// Sync backend state on load
+(async () => {
+  try { await invoke("set_always_on_top", { enabled: settings.alwaysOnTop }); } catch (_) {}
+  try { await invoke("set_auto_hide", { enabled: settings.autoHide }); } catch (_) {}
+  try { await invoke("set_tray_metric", { metric: currentMetric }); } catch (_) {}
+})();
+
+// ---- UTILITIES ----
 
 function getColor(pct) {
   if (pct >= 90) return "red";
@@ -68,14 +112,12 @@ function renderBar(label, pct, subText) {
 
 function truncatePath(cwd, maxLen) {
   if (!cwd || cwd.length <= maxLen) return cwd || "";
-  // Keep drive + last folder: "E:\...\folder"
   const parts = cwd.replace(/\//g, "\\").split("\\").filter(Boolean);
   if (parts.length <= 2) return cwd.slice(0, maxLen) + "...";
   return parts[0] + "\\....\\" + parts[parts.length - 1];
 }
 
 function refineStatus(session, ctx) {
-  // Backend gives rough status. Refine with real context % from frontend.
   const pct = ctx ? ctx.pct : 0;
   if (session.last_activity_mins <= 5) return "active";
   if (session.last_activity_mins <= 15 || pct >= 15) return "idle";
@@ -95,7 +137,6 @@ function renderSession(session, ctx) {
   const status = refineStatus(session, ctx);
   const shortCwd = truncatePath(session.cwd, 30);
 
-  // Info line: model, duration, tokens (left) + PID (right)
   const infoLeft = `${model}, ${formatDuration(session.duration_mins)}, ${used} / ${max}`;
   const legendParts = [];
   if (ctx && ctx.turn_count > 0) legendParts.push(`${ctx.turn_count} turns`);
@@ -105,14 +146,11 @@ function renderSession(session, ctx) {
     legendParts.push(`compact at ${autocompactPct}%`);
   }
   const infoRight = `PID ${session.pid}`;
-
-  // Bar label: name + badge
   const barLabel = session.name + renderStatusBadge(status);
 
-  // Actions: COMPACT always, DISMISS for idle/ghost
-  let actions = `<button class="action-btn" data-pid="${session.pid}" data-action="compact">COMPACT</button>`;
+  let actions = `<button class="action-icon-btn" data-pid="${session.pid}" data-action="compact" title="Compact session">&#x21BB;</button>`;
   if (status !== "active") {
-    actions += `<button class="action-btn dismiss-btn" data-pid="${session.pid}" data-action="dismiss">DISMISS</button>`;
+    actions += `<button class="action-icon-btn dismiss-icon-btn" data-pid="${session.pid}" data-action="dismiss" title="Dismiss session">&#x2715;</button>`;
   }
 
   return `
@@ -140,7 +178,6 @@ function renderPermission(perm) {
     else detail = JSON.stringify(req.tool_input).slice(0, 120);
   }
   if (detail.length > 120) detail = detail.slice(0, 120) + "...";
-
   const permId = req.id;
 
   return `
@@ -157,8 +194,6 @@ function renderPermission(perm) {
   `;
 }
 
-let lastGhostCount = 0;
-
 async function renderLeftPanel() {
   const sessions = await invoke("list_sessions");
   const pending = await invoke("get_pending_permissions");
@@ -171,7 +206,6 @@ async function renderLeftPanel() {
     } catch (_) {}
   }
 
-  // Count ghosts (refined with real context %)
   lastGhostCount = sessions.filter(s => refineStatus(s, contexts[s.session_id]) === "ghost").length;
 
   let html = `<div class="section-label">SESSIONS (${sessions.length})</div>`;
@@ -190,14 +224,12 @@ async function renderLeftPanel() {
   return html;
 }
 
-// ---- RIGHT PANEL: Usage (Burnrate) ----
+// ---- RIGHT PANEL: Usage ----
 
 function renderExtraUsage(extra) {
   if (!extra || !extra.is_enabled) return "";
   const rawUsed = extra.used_credits || 0;
   const rawLimit = extra.monthly_limit || 0;
-  // API returns values in cents - convert to base currency
-  // No currency symbol: API doesn't specify currency (USD, EUR, etc.)
   const used = (rawUsed / 100).toFixed(2);
   const limit = (rawLimit / 100).toFixed(2);
   return `
@@ -210,17 +242,14 @@ function renderExtraUsage(extra) {
 
 function metricBtn(id, label) {
   const active = currentMetric === id ? "active" : "";
-  return `<button class="metric-btn ${active}" onclick="setMetric('${id}')">${label}</button>`;
+  return `<button class="metric-btn ${active}" data-action="set-metric" data-metric="${id}">${label}</button>`;
 }
 
 async function renderRightPanel() {
   try {
     let data = await invoke("get_usage");
     if (!data || !data.usage) {
-      try {
-        data = await invoke("refresh_usage");
-      } catch (fetchErr) {
-        console.error("refresh_usage error:", fetchErr);
+      try { data = await invoke("refresh_usage"); } catch (fetchErr) {
         return `<div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading usage...</div></div>`;
       }
     }
@@ -231,19 +260,12 @@ async function renderRightPanel() {
     const usage = data.usage;
     let html = `<div class="section-label">USAGE</div>`;
 
-    if (usage.five_hour) {
-      html += renderBar("Session (5h)", Math.round(usage.five_hour.utilization), formatTimeLeft(usage.five_hour.resets_at));
-    }
-    if (usage.seven_day) {
-      html += renderBar("Weekly", Math.round(usage.seven_day.utilization), formatTimeLeft(usage.seven_day.resets_at));
-    }
-    if (usage.seven_day_sonnet) {
-      html += renderBar("Sonnet (weekly)", Math.round(usage.seven_day_sonnet.utilization), formatTimeLeft(usage.seven_day_sonnet.resets_at));
-    }
+    if (usage.five_hour) html += renderBar("Session (5h)", Math.round(usage.five_hour.utilization), formatTimeLeft(usage.five_hour.resets_at));
+    if (usage.seven_day) html += renderBar("Weekly", Math.round(usage.seven_day.utilization), formatTimeLeft(usage.seven_day.resets_at));
+    if (usage.seven_day_sonnet) html += renderBar("Sonnet (weekly)", Math.round(usage.seven_day_sonnet.utilization), formatTimeLeft(usage.seven_day_sonnet.resets_at));
 
     html += renderExtraUsage(usage.extra_usage);
 
-    // Tray metric selector
     html += `
       <div class="settings-row">
         ${metricBtn("session", "5H")}
@@ -258,41 +280,135 @@ async function renderRightPanel() {
   }
 }
 
+// ---- SETTINGS VIEW ----
+
+function renderToggle(key, checked) {
+  return `
+    <label class="toggle">
+      <input type="checkbox" ${checked ? "checked" : ""} data-action="toggle" data-key="${key}">
+      <span class="toggle-slider"></span>
+    </label>
+  `;
+}
+
+function renderThemeOption(id, label) {
+  const checked = settings.theme === id ? "checked" : "";
+  return `
+    <label class="theme-option" data-action="set-theme" data-theme="${id}">
+      <input type="radio" name="theme" value="${id}" ${checked}>
+      <span class="theme-option-label">${label}</span>
+    </label>`;
+}
+
+async function renderSettingsView() {
+  let appVersion = "";
+  let isAutostart = false;
+  try { appVersion = await invoke("get_version"); } catch (_) {}
+  try { isAutostart = await invoke("get_autostart"); } catch (_) {}
+
+  return `
+    <div class="settings-header">
+      <button class="settings-back-btn" data-action="back">&larr; BACK</button>
+      <span class="settings-title">SETTINGS</span>
+      <span></span>
+    </div>
+    <div class="settings-view">
+      <div class="settings-group">
+        <div class="settings-group-label">APPEARANCE</div>
+        <div class="settings-card">
+          <div class="settings-item theme-picker">
+            <div class="theme-options">
+              ${renderThemeOption("cyberpunk", "Cyber")}
+              ${renderThemeOption("glass", "Glass")}
+              ${renderThemeOption("light", "Light")}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-label">WINDOW BEHAVIOR</div>
+        <div class="settings-card">
+          <div class="settings-item">
+            <span class="settings-item-label">Always on top</span>
+            ${renderToggle("alwaysOnTop", settings.alwaysOnTop)}
+          </div>
+          <div class="settings-item">
+            <span class="settings-item-label">Auto-hide on blur</span>
+            ${renderToggle("autoHide", settings.autoHide)}
+          </div>
+          <div class="settings-item">
+            <span class="settings-item-label">Start with Windows</span>
+            ${renderToggle("autostart", isAutostart)}
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-label">TRAY ICON METRIC</div>
+        <div class="settings-card">
+          <div class="settings-item">
+            <div class="settings-row" style="padding:0; border:none; background:none;">
+              ${metricBtn("session", "5H")}
+              ${metricBtn("weekly", "WEEK")}
+              ${metricBtn("sonnet", "SONNET")}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-label">ABOUT</div>
+        <div class="settings-card">
+          <div class="settings-about">
+            Auralis Pulse v${appVersion}<br>
+            <a href="https://github.com/antonpme/auralis-pulse" target="_blank">github.com/antonpme/auralis-pulse</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // ---- RENDER ----
 
 async function render() {
   if (renderLock) return;
   renderLock = true;
   try {
-    const [leftHtml, rightHtml] = await Promise.all([renderLeftPanel(), renderRightPanel()]);
+    if (currentView === "settings") {
+      app.innerHTML = await renderSettingsView();
+    } else {
+      const [leftHtml, rightHtml] = await Promise.all([renderLeftPanel(), renderRightPanel()]);
 
-    let usageTier = "";
-    let appVersion = "";
-    try {
-      const data = await invoke("get_usage");
-      if (data && data.tier) usageTier = formatTier(data.tier);
-    } catch (_) {}
-    try { appVersion = await invoke("get_version"); } catch (_) {}
+      let usageTier = "";
+      let appVersion = "";
+      try {
+        const data = await invoke("get_usage");
+        if (data && data.tier) usageTier = formatTier(data.tier);
+      } catch (_) {}
+      try { appVersion = await invoke("get_version"); } catch (_) {}
 
-    app.innerHTML = `
-      <div class="header">
-        <div class="header-left">
-          <div class="header-title-row">
-            <h1>AURALIS PULSE</h1>
-            ${usageTier ? `<span class="tier-label">${usageTier}</span>` : ""}
+      app.innerHTML = `
+        <div class="header">
+          <div class="header-left">
+            <div class="header-title-row">
+              <h1>AURALIS PULSE</h1>
+              ${usageTier ? `<span class="tier-label">${usageTier}</span>` : ""}
+            </div>
+            <span class="header-subtitle">COMPANION FOR CLAUDE CODE${appVersion ? ` · v${appVersion}` : ""}</span>
           </div>
-          <span class="header-subtitle">COMPANION FOR CLAUDE CODE${appVersion ? ` · v${appVersion}` : ""}</span>
+          <div class="header-right">
+              <button class="header-icon-btn" data-action="open-settings" title="Settings">&#x2699;</button>
+            <button class="refresh-icon-btn" data-action="refresh" title="Refresh all">&#x21bb;</button>
+          </div>
         </div>
-        <div class="header-right">
-          ${lastGhostCount > 0 ? `<button class="clean-btn" data-action="clean-ghosts" title="Remove ${lastGhostCount} ghost session${lastGhostCount > 1 ? 's' : ''}">CLEAN</button>` : ""}
-          <button class="refresh-icon-btn" data-action="refresh" title="Refresh all">&#x21bb;</button>
+        <div class="split-container">
+          <div class="panel-left">${leftHtml}</div>
+          <div class="panel-right">${rightHtml}</div>
         </div>
-      </div>
-      <div class="split-container">
-        <div class="panel-left">${leftHtml}</div>
-        <div class="panel-right">${rightHtml}</div>
-      </div>
-    `;
+      `;
+    }
   } catch (err) {
     app.innerHTML = `<div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading...</div></div>`;
   } finally {
@@ -300,24 +416,16 @@ async function render() {
   }
 }
 
-// ---- ACTIONS ----
-// Most actions handled via event delegation above.
-
-window.setMetric = async function(metric) {
-  currentMetric = metric;
-  try { await invoke("set_tray_metric", { metric }); } catch (_) {}
-  render();
-};
-
 // ---- EVENTS ----
-listen("permission-request", () => render());
-listen("sessions-updated", () => render());
-listen("usage-updated", () => render());
+listen("permission-request", () => { if (currentView === "main") render(); });
+listen("sessions-updated", () => { if (currentView === "main") render(); });
+listen("usage-updated", () => { if (currentView === "main") render(); });
+listen("open-settings", () => { currentView = "settings"; render(); });
 
 render();
-setInterval(render, 15000);
+setInterval(() => { if (currentView === "main") render(); }, 15000);
 
-// Unified event delegation for all interactive buttons
+// ---- EVENT DELEGATION ----
 document.addEventListener("click", async (e) => {
   const target = e.target.closest("[data-action]");
   if (!target) return;
@@ -325,33 +433,29 @@ document.addEventListener("click", async (e) => {
   const action = target.dataset.action;
   const pid = target.dataset.pid ? parseInt(target.dataset.pid) : null;
 
-  // Permission buttons
+  // Permission
   if (action === "perm" && target.dataset.id) {
     const id = target.dataset.id;
     const decision = target.dataset.decision;
     target.disabled = true;
     target.textContent = "...";
-    try {
-      await invoke("respond_permission", { id, decision });
-      render();
-    } catch (err) {
-      console.error("[PULSE] Permission response failed:", err);
-      target.disabled = false;
-    }
+    try { await invoke("respond_permission", { id, decision }); render(); }
+    catch (err) { target.disabled = false; }
     return;
   }
 
   // Session actions
   if (action === "compact" && pid) {
+    const original = target.innerHTML;
     target.disabled = true;
     target.textContent = "...";
     try {
       await invoke("trigger_compact", { pid });
-      target.textContent = "SENT";
-      setTimeout(() => { target.textContent = "COMPACT"; target.disabled = false; }, 2000);
+      target.textContent = "\u2713";
+      setTimeout(() => { target.innerHTML = original; target.disabled = false; }, 2000);
     } catch (err) {
-      target.textContent = "FAIL";
-      setTimeout(() => { target.textContent = "COMPACT"; target.disabled = false; }, 2000);
+      target.textContent = "!";
+      setTimeout(() => { target.innerHTML = original; target.disabled = false; }, 2000);
     }
     return;
   }
@@ -359,14 +463,8 @@ document.addEventListener("click", async (e) => {
   if (action === "dismiss" && pid) {
     target.disabled = true;
     target.textContent = "...";
-    try {
-      await invoke("dismiss_session", { pid });
-      render();
-    } catch (err) {
-      console.error("[PULSE] Dismiss failed:", err);
-      target.textContent = "FAIL";
-      setTimeout(() => { target.textContent = "DISMISS"; target.disabled = false; }, 2000);
-    }
+    try { await invoke("dismiss_session", { pid }); render(); }
+    catch (err) { target.textContent = "!"; setTimeout(() => render(), 2000); }
     return;
   }
 
@@ -377,11 +475,7 @@ document.addEventListener("click", async (e) => {
       const count = await invoke("clean_ghost_sessions");
       target.textContent = count > 0 ? `${count} REMOVED` : "NONE";
       setTimeout(() => render(), 1000);
-    } catch (err) {
-      console.error("[PULSE] Clean ghosts failed:", err);
-      target.textContent = "FAIL";
-      setTimeout(() => render(), 2000);
-    }
+    } catch (err) { target.textContent = "FAIL"; setTimeout(() => render(), 2000); }
     return;
   }
 
@@ -390,8 +484,57 @@ document.addEventListener("click", async (e) => {
     render();
     return;
   }
+
+  // Navigation
+  if (action === "open-settings") { currentView = "settings"; render(); return; }
+  if (action === "back") { currentView = "main"; render(); return; }
+
+  // Theme (handled via change event on radio)
+  if (action === "set-theme") {
+    applyTheme(target.dataset.theme);
+    render();
+    return;
+  }
+
+  // Metric
+  if (action === "set-metric") {
+    currentMetric = target.dataset.metric;
+    localStorage.setItem("pulse-tray-metric", currentMetric);
+    try { await invoke("set_tray_metric", { metric: currentMetric }); } catch (_) {}
+    render();
+    return;
+  }
+});
+
+// Change events (toggles + radio)
+document.addEventListener("change", async (e) => {
+  // Theme radio
+  if (e.target.name === "theme") {
+    applyTheme(e.target.value);
+    render();
+    return;
+  }
+
+  const input = e.target.closest("[data-action='toggle']");
+  if (!input) return;
+
+  const key = input.dataset.key;
+  const checked = input.checked;
+
+  if (key === "alwaysOnTop") {
+    saveSetting("alwaysOnTop", checked);
+    try { await invoke("set_always_on_top", { enabled: checked }); } catch (_) {}
+  } else if (key === "autoHide") {
+    saveSetting("autoHide", checked);
+    try { await invoke("set_auto_hide", { enabled: checked }); } catch (_) {}
+  } else if (key === "autostart") {
+    try { await invoke("toggle_autostart"); } catch (_) {}
+  }
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") window.__TAURI__.window.getCurrentWindow().hide();
+  if (e.key === "Escape") {
+    if (currentView === "settings") { currentView = "main"; render(); }
+    else window.__TAURI__.window.getCurrentWindow().hide();
+  }
 });

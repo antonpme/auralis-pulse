@@ -12,7 +12,7 @@ use server::{PermissionResponse, SharedState};
 use std::sync::Arc;
 use tauri::{
     image::Image,
-    menu::{CheckMenuItem, Menu, MenuItem},
+    menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
 };
@@ -25,6 +25,10 @@ struct UsageState {
 
 struct TrayMetricState {
     metric: Mutex<String>, // "session", "weekly", "sonnet"
+}
+
+struct AutoHideState {
+    enabled: Mutex<bool>,
 }
 
 // Session commands
@@ -113,6 +117,54 @@ async fn set_tray_metric(
 ) -> Result<(), String> {
     *state.metric.lock().await = metric;
     Ok(())
+}
+
+#[tauri::command]
+async fn set_always_on_top(enabled: bool, window: tauri::Window) -> Result<(), String> {
+    window.set_always_on_top(enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_auto_hide(
+    enabled: bool,
+    state: tauri::State<'_, AutoHideState>,
+) -> Result<(), String> {
+    *state.enabled.lock().await = enabled;
+    Ok(())
+}
+
+#[tauri::command]
+async fn resize_window(width: f64, height: f64, window: tauri::Window) -> Result<(), String> {
+    use tauri::{LogicalSize, LogicalPosition};
+    // Anchor to bottom-right corner: reposition so the right/bottom edges stay fixed
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let screen = monitor.size();
+        let scale = monitor.scale_factor();
+        let screen_w = screen.width as f64 / scale;
+        let screen_h = screen.height as f64 / scale;
+        let x = screen_w - width - 12.0;
+        let y = screen_h - height - 52.0;
+        let _ = window.set_position(tauri::Position::Logical(LogicalPosition::new(x, y)));
+    }
+    window.set_size(tauri::Size::Logical(LogicalSize::new(width, height)))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    Ok(app.autolaunch().is_enabled().unwrap_or(false))
+}
+
+#[tauri::command]
+async fn toggle_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    let mgr = app.autolaunch();
+    let currently = mgr.is_enabled().unwrap_or(false);
+    if currently {
+        mgr.disable().map_err(|e| e.to_string())?;
+    } else {
+        mgr.enable().map_err(|e| e.to_string())?;
+    }
+    Ok(!currently)
 }
 
 async fn fetch_usage_data() -> Result<serde_json::Value, String> {
@@ -236,6 +288,9 @@ fn main() {
         .manage(TrayMetricState {
             metric: Mutex::new("weekly".to_string()),
         })
+        .manage(AutoHideState {
+            enabled: Mutex::new(true),
+        })
         .invoke_handler(tauri::generate_handler![
             list_sessions,
             get_context,
@@ -247,7 +302,12 @@ fn main() {
             get_usage,
             refresh_usage,
             set_tray_metric,
-            get_version
+            get_version,
+            set_always_on_top,
+            set_auto_hide,
+            resize_window,
+            get_autostart,
+            toggle_autostart
         ])
         .setup(move |app| {
             // Set app handle in server state
@@ -282,23 +342,15 @@ fn main() {
                 &format!("Auralis Pulse v{}", version),
                 false, None::<&str>,
             )?;
-            let is_autostart = app.autolaunch().is_enabled().unwrap_or(false);
-            let autostart_item = CheckMenuItem::with_id(
-                app,
-                "autostart",
-                "Start with Windows",
-                true,
-                is_autostart,
-                None::<&str>,
-            )?;
+            let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Pulse", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&about, &autostart_item, &quit])?;
+            let menu = Menu::with_items(app, &[&about, &settings_item, &quit])?;
 
             let icon_pixels = create_tray_icon(0, false);
             let icon = Image::new_owned(icon_pixels, 16, 16);
 
-            let popup_w = 700.0;
-            let popup_h = 480.0;
+            let popup_w = 780.0;
+            let popup_h = 500.0;
 
             let _tray = TrayIconBuilder::with_id("pulse-tray")
                 .icon(icon)
@@ -308,13 +360,13 @@ fn main() {
                 .on_menu_event(|app, event| {
                     if event.id == "quit" {
                         app.exit(0);
-                    } else if event.id == "autostart" {
-                        let mgr = app.autolaunch();
-                        let currently_enabled = mgr.is_enabled().unwrap_or(false);
-                        if currently_enabled {
-                            let _ = mgr.disable();
-                        } else {
-                            let _ = mgr.enable();
+                    } else if event.id == "settings" {
+                        // Show window and switch to settings view
+                        if let Some(window) = app.get_webview_window("pulse") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            use tauri::Emitter;
+                            let _ = window.emit("open-settings", ());
                         }
                     }
                 })
@@ -338,11 +390,17 @@ fn main() {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
+                                // Position from current inner size, anchored to bottom-right
                                 if let Ok(Some(monitor)) = window.primary_monitor() {
                                     let screen = monitor.size();
                                     let scale = monitor.scale_factor();
-                                    let x = (screen.width as f64 / scale) - popup_w - 12.0;
-                                    let y = (screen.height as f64 / scale) - popup_h - 52.0;
+                                    let win_size = window.inner_size().unwrap_or(tauri::PhysicalSize::new(
+                                        (popup_w * scale) as u32, (popup_h * scale) as u32
+                                    ));
+                                    let w = win_size.width as f64 / scale;
+                                    let h = win_size.height as f64 / scale;
+                                    let x = (screen.width as f64 / scale) - w - 12.0;
+                                    let y = (screen.height as f64 / scale) - h - 52.0;
                                     let _ = window.set_position(tauri::Position::Logical(
                                         tauri::LogicalPosition::new(x, y),
                                     ));
@@ -529,14 +587,18 @@ fn main() {
                     let _ = window.hide();
                 }
             }
-            // Auto-hide when window loses focus (click outside)
+            // Auto-hide when window loses focus (click outside), if enabled
             tauri::RunEvent::WindowEvent {
                 event: tauri::WindowEvent::Focused(false),
                 label,
                 ..
             } => {
-                if let Some(window) = app.get_webview_window(&label) {
-                    let _ = window.hide();
+                let auto_hide_state: tauri::State<AutoHideState> = app.state();
+                let enabled = *auto_hide_state.enabled.blocking_lock();
+                if enabled {
+                    if let Some(window) = app.get_webview_window(&label) {
+                        let _ = window.hide();
+                    }
                 }
             }
             _ => {}

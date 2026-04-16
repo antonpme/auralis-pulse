@@ -63,6 +63,9 @@ Ideas under discussion. Not committed to roadmap yet. Needs research, design, or
 
 ## Potential Future Ideas (raw, unfiltered)
 
+- **Session numbering** - Show #1, #2, #3 on left side of session cards for quick reference
+- **Session sorting** - Sort by context %, session duration, or idle time. Dropdown or toggle in SESSIONS header
+- **Project filter** - Filter sessions by project/cwd. Useful when 10+ sessions running
 - **Session grouping** - Group related sessions (e.g., "frontend" + "backend" + "tests")
 - **Cost tracker** - Estimate $ spent per session based on token counts and model pricing
 - **Session templates** - Quick-launch Claude Code with predefined cwd + name + permissions
