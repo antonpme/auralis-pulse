@@ -19,6 +19,52 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 use tokio::sync::Mutex;
 
+/// Get the primary monitor's work area (screen minus taskbar) in physical pixels.
+/// Returns (left, top, right, bottom) or None on failure.
+#[cfg(windows)]
+fn get_work_area() -> Option<(i32, i32, i32, i32)> {
+    #[repr(C)]
+    struct RECT {
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+    }
+
+    extern "system" {
+        fn SystemParametersInfoW(
+            ui_action: u32,
+            ui_param: u32,
+            pv_param: *mut RECT,
+            f_win_ini: u32,
+        ) -> i32;
+    }
+
+    const SPI_GETWORKAREA: u32 = 0x0030;
+    let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    let success = unsafe { SystemParametersInfoW(SPI_GETWORKAREA, 0, &mut rect, 0) };
+
+    if success != 0 {
+        Some((rect.left, rect.top, rect.right, rect.bottom))
+    } else {
+        None
+    }
+}
+
+/// Get work area in logical pixels (divided by scale factor).
+/// Falls back to screen_size - 48px bottom if Win32 API fails.
+#[cfg(windows)]
+fn get_work_area_logical(scale: f64, screen_w: f64, screen_h: f64) -> (f64, f64, f64, f64) {
+    get_work_area()
+        .map(|(l, t, r, b)| (l as f64 / scale, t as f64 / scale, r as f64 / scale, b as f64 / scale))
+        .unwrap_or((0.0, 0.0, screen_w / scale, (screen_h - 48.0) / scale))
+}
+
+#[cfg(not(windows))]
+fn get_work_area_logical(scale: f64, screen_w: f64, screen_h: f64) -> (f64, f64, f64, f64) {
+    (0.0, 0.0, screen_w / scale, (screen_h - 48.0) / scale)
+}
+
 struct UsageState {
     data: Mutex<Option<serde_json::Value>>,
 }
@@ -136,14 +182,13 @@ async fn set_auto_hide(
 #[tauri::command]
 async fn resize_window(width: f64, height: f64, window: tauri::Window) -> Result<(), String> {
     use tauri::{LogicalSize, LogicalPosition};
-    // Anchor to bottom-right corner: reposition so the right/bottom edges stay fixed
+    // Anchor to bottom-right corner using actual work area (no magic numbers)
     if let Ok(Some(monitor)) = window.primary_monitor() {
         let screen = monitor.size();
         let scale = monitor.scale_factor();
-        let screen_w = screen.width as f64 / scale;
-        let screen_h = screen.height as f64 / scale;
-        let x = screen_w - width - 12.0;
-        let y = screen_h - height - 52.0;
+        let (_wl, _wt, wr, wb) = get_work_area_logical(scale, screen.width as f64, screen.height as f64);
+        let x = wr - width;
+        let y = wb - height;
         let _ = window.set_position(tauri::Position::Logical(LogicalPosition::new(x, y)));
     }
     window.set_size(tauri::Size::Logical(LogicalSize::new(width, height)))
@@ -393,7 +438,7 @@ fn main() {
                                 // Show first, then position - Windows can reset position during show()
                                 let _ = window.show();
                                 let _ = window.set_focus();
-                                // Position from current inner size, anchored to bottom-right
+                                // Position using actual work area (no magic taskbar offsets)
                                 if let Ok(Some(monitor)) = window.primary_monitor() {
                                     let screen = monitor.size();
                                     let scale = monitor.scale_factor();
@@ -402,8 +447,9 @@ fn main() {
                                     ));
                                     let w = win_size.width as f64 / scale;
                                     let h = win_size.height as f64 / scale;
-                                    let x = (screen.width as f64 / scale) - w - 12.0;
-                                    let y = (screen.height as f64 / scale) - h - 52.0;
+                                    let (_wl, _wt, wr, wb) = get_work_area_logical(scale, screen.width as f64, screen.height as f64);
+                                    let x = wr - w;
+                                    let y = wb - h;
                                     let _ = window.set_position(tauri::Position::Logical(
                                         tauri::LogicalPosition::new(x, y),
                                     ));
@@ -417,10 +463,8 @@ fn main() {
                                     Some(monitor) => {
                                         let screen = monitor.size();
                                         let scale = monitor.scale_factor();
-                                        (
-                                            (screen.width as f64 / scale) - popup_w - 12.0,
-                                            (screen.height as f64 / scale) - popup_h - 52.0,
-                                        )
+                                        let (_wl, _wt, wr, wb) = get_work_area_logical(scale, screen.width as f64, screen.height as f64);
+                                        (wr - popup_w, wb - popup_h)
                                     }
                                     None => (800.0, 400.0),
                                 }

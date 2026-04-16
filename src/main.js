@@ -185,9 +185,9 @@ function renderPermission(perm) {
       <div class="permission-tool">${req.tool_name}</div>
       <div class="permission-detail">${detail}</div>
       <div class="permission-actions">
-        <button class="perm-btn allow" data-action="perm" data-id="${permId}" data-decision="allow">YES</button>
-        <button class="perm-btn allow secondary" data-action="perm" data-id="${permId}" data-decision="allow_session">DON'T ASK AGAIN</button>
-        <button class="perm-btn deny" data-action="perm" data-id="${permId}" data-decision="deny">NO</button>
+        <button class="perm-btn allow" data-action="perm" data-id="${permId}" data-decision="allow">YES <kbd>Y</kbd></button>
+        <button class="perm-btn allow secondary" data-action="perm" data-id="${permId}" data-decision="allow_session">ALWAYS <kbd>A</kbd></button>
+        <button class="perm-btn deny" data-action="perm" data-id="${permId}" data-decision="deny">NO <kbd>N</kbd></button>
         <button class="perm-btn dismiss" data-action="perm" data-id="${permId}" data-decision="dismiss">&#x2715;</button>
       </div>
     </div>
@@ -532,9 +532,25 @@ document.addEventListener("change", async (e) => {
   }
 });
 
-document.addEventListener("keydown", (e) => {
+document.addEventListener("keydown", async (e) => {
   if (e.key === "Escape") {
     if (currentView === "settings") { currentView = "main"; render(); }
     else window.__TAURI__.window.getCurrentWindow().hide();
+    return;
+  }
+
+  // Permission shortcuts: Y=allow, A=allow_session, N=deny (topmost pending)
+  if (currentView === "main") {
+    const key = e.key.toLowerCase();
+    const shortcutMap = { y: "allow", a: "allow_session", n: "deny" };
+    const decision = shortcutMap[key];
+    if (!decision) return;
+
+    const btn = document.querySelector('.perm-btn[data-action="perm"]');
+    if (!btn) return; // no pending permissions
+
+    const id = btn.dataset.id;
+    try { await invoke("respond_permission", { id, decision }); render(); }
+    catch (_) {}
   }
 });

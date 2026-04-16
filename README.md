@@ -8,11 +8,15 @@ Stop guessing how much context is left. Stop missing permission popups buried in
 
 **Session monitoring** - See every active Claude Code session with token usage, model info, duration, compaction count, and PID. Sessions are color-coded by context fill level (green, yellow, orange, red).
 
-**Permission forwarding** - When Claude Code asks for permission (Bash, Write, Edit), Pulse catches it via hook, shows a desktop notification with sound, and lets you approve or deny from the tray popup. No more alt-tabbing to the terminal.
+**Permission forwarding** - When Claude Code asks for permission (Bash, Write, Edit), Pulse catches it via hook, shows a desktop notification with sound, and lets you approve or deny from the tray popup. Keyboard shortcuts: **Y** allow, **A** always allow, **N** deny.
 
 **Usage tracking** - Live burnrate bars for your 5-hour session limit, weekly limit, and Sonnet-specific limit. See exactly when each window resets. Extra usage spending displayed if enabled.
 
-**Ghost detection** - Sessions that go idle or become orphaned are automatically flagged as IDLE or GHOST. Dismiss them individually or clean all ghosts with one click.
+**Themes** - Three built-in themes: Cyberpunk (dark, neon), Glassmorphism (translucent, rounded), Light (clean, purple). All settings persisted across restarts.
+
+**Settings panel** - Always on top, auto-hide on blur, autostart, tray metric selector, theme picker. Gear icon in header or from tray menu.
+
+**Ghost detection** - Sessions that go idle or become orphaned are automatically flagged as IDLE or GHOST. Dismiss them individually from the session card.
 
 **Compact trigger** - Hit COMPACT on any session card to send the `/compact` command to that CLI session.
 
@@ -66,7 +70,7 @@ Then create `~/.claude/hooks/permission-forward.js` (included in the repo under 
 
 ### Autostart
 
-Right-click the tray icon and toggle "Start with Windows".
+Open Settings (gear icon) and toggle "Start with Windows".
 
 ## How it works
 
@@ -83,11 +87,11 @@ For permissions, a lightweight HTTP server runs on `127.0.0.1:59428`. The CLI ho
 
 ## Roadmap
 
-**v1.1** - Settings panel, themes (Cyberpunk, Glassmorphism, Light, macOS), keyboard shortcuts for permissions
+**v1.1** (current) - Settings panel, 3 themes (Cyberpunk, Glass, Light), keyboard shortcuts for permissions (Y/A/N), window positioning via Win32 work area API
 
-**v1.2** - macOS and Linux builds, auto-update, GitHub Actions CI
+**v1.2** - Context window alerts (per-session thresholds, optional auto-compact), session sorting/filtering, session numbering
 
-**v1.3** - Session activity graphs, cost estimation, plugin system
+**v1.3** - Cross-platform (macOS, Linux), auto-update, GitHub Actions CI
 
 Full roadmap: [ROADMAP.md](ROADMAP.md)
 

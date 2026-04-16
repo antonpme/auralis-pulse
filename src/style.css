@@ -604,6 +604,13 @@ body {
 }
 .perm-btn.dismiss:hover { background: var(--accent-bg); color: var(--text-secondary); }
 
+.perm-btn kbd {
+  font-family: inherit;
+  font-size: 7px;
+  opacity: 0.5;
+  margin-left: 3px;
+}
+
 /* Extra usage */
 .extra-inline {
   display: flex;
