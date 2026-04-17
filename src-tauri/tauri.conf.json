@@ -1,6 +1,6 @@
 {
   "productName": "Auralis Pulse",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "identifier": "com.auralis.pulse",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -11,7 +11,7 @@
   "app": {
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://api.anthropic.com"
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost https://api.anthropic.com"
     },
     "withGlobalTauri": true
   },

@@ -9,6 +9,7 @@ mod server;
 mod sessions;
 
 use server::{PermissionResponse, SharedState};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{
     image::Image,
@@ -18,6 +19,29 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 use tokio::sync::Mutex;
+
+// ---- Usage disk cache + backoff helpers ----
+
+fn usage_cache_path() -> Result<PathBuf, String> {
+    let base = dirs::data_local_dir().ok_or_else(|| "Cannot find local data dir".to_string())?;
+    let dir = base.join("auralis-pulse");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("usage-cache.json"))
+}
+
+fn save_usage_cache(data: &serde_json::Value) {
+    if let Ok(path) = usage_cache_path() {
+        if let Ok(json) = serde_json::to_string(data) {
+            let _ = std::fs::write(&path, json);
+        }
+    }
+}
+
+fn load_usage_cache() -> Option<serde_json::Value> {
+    let path = usage_cache_path().ok()?;
+    let content = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&content).ok()
+}
 
 /// Get the primary monitor's work area (screen minus taskbar) in physical pixels.
 /// Returns (left, top, right, bottom) or None on failure.
@@ -103,6 +127,33 @@ async fn trigger_compact(pid: u32) -> Result<String, String> {
     compact::trigger_compact(pid)
 }
 
+#[tauri::command]
+async fn send_command(pid: u32, text: String) -> Result<String, String> {
+    compact::send_command(pid, &text)
+}
+
+#[tauri::command]
+fn fire_threshold_notification(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title(&title)
+        .body(&body)
+        .show()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn open_devtools(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.open_devtools();
+    Ok(())
+}
+
 // Permission commands
 #[tauri::command]
 async fn respond_permission(
@@ -146,6 +197,7 @@ async fn refresh_usage(
     usage_state: tauri::State<'_, UsageState>,
 ) -> Result<serde_json::Value, String> {
     let result = fetch_usage_data().await?;
+    save_usage_cache(&result);
     let mut data = usage_state.data.lock().await;
     *data = Some(result.clone());
     Ok(result)
@@ -221,6 +273,7 @@ async fn fetch_usage_data() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
         "usage": usage,
         "tier": tier,
+        "fetched_at": chrono::Utc::now().timestamp(),
     }))
 }
 
@@ -328,7 +381,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .manage(server_state_tauri.clone())
         .manage(UsageState {
-            data: Mutex::new(None),
+            data: Mutex::new(load_usage_cache()),
         })
         .manage(TrayMetricState {
             metric: Mutex::new("weekly".to_string()),
@@ -340,6 +393,9 @@ fn main() {
             list_sessions,
             get_context,
             trigger_compact,
+            send_command,
+            fire_threshold_notification,
+            open_devtools,
             dismiss_session,
             clean_ghost_sessions,
             respond_permission,
@@ -594,21 +650,48 @@ fn main() {
                 }
             });
 
-            // Usage refresh loop: every 5 min (API call)
+            // Usage refresh loop: 5min normal, exponential backoff on rate limit (max 60min)
             let app_handle2 = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                let mut fail_count: u32 = 0;
                 loop {
-                    if let Ok(data) = fetch_usage_data().await {
-                        let state: tauri::State<UsageState> = app_handle2.state();
-                        *state.data.lock().await = Some(data);
+                    match fetch_usage_data().await {
+                        Ok(data) => {
+                            fail_count = 0;
+                            save_usage_cache(&data);
+                            let state: tauri::State<UsageState> = app_handle2.state();
+                            *state.data.lock().await = Some(data);
 
-                        if let Some(window) = app_handle2.get_webview_window("pulse") {
-                            let _ = window.emit("usage-updated", ());
+                            if let Some(window) = app_handle2.get_webview_window("pulse") {
+                                let _ = window.emit("usage-updated", ());
+                            }
+
+                            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
+                        }
+                        Err(err) => {
+                            fail_count = fail_count.saturating_add(1);
+                            let err_lower = err.to_lowercase();
+                            let is_rate_limit = err_lower.contains("429")
+                                || err_lower.contains("rate limit")
+                                || err_lower.contains("rate_limit");
+
+                            // Exponential: 5, 10, 20, 40, 60 min (capped)
+                            let wait_secs = if is_rate_limit {
+                                let exp = fail_count.min(5).saturating_sub(1);
+                                (300u64.saturating_mul(1u64 << exp)).min(3600)
+                            } else {
+                                300 // non-rate-limit errors: stay at 5 min
+                            };
+
+                            eprintln!(
+                                "[usage-refresh] Failure #{} (rate_limited={}): {} - retry in {}s",
+                                fail_count, is_rate_limit, err, wait_secs
+                            );
+
+                            tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
                         }
                     }
-
-                    tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
                 }
             });
 

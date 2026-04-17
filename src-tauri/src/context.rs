@@ -107,6 +107,63 @@ fn read_post_compaction_lines(path: &PathBuf) -> Vec<String> {
     }
 }
 
+/// Parse a raw model string like "claude-opus-4-6-7-20250904" into a display label
+/// and max token context. Handles both modern (family-version-date) and legacy
+/// (version-family-date, e.g. "claude-3-5-sonnet-20240620") formats.
+fn parse_model_string(raw: &str) -> (String, u64) {
+    let lower = raw.to_lowercase();
+    let family = if lower.contains("opus") {
+        "opus"
+    } else if lower.contains("sonnet") {
+        "sonnet"
+    } else if lower.contains("haiku") {
+        "haiku"
+    } else {
+        // Unknown family - show raw (stripped of "claude-" prefix)
+        let stripped = raw.strip_prefix("claude-").unwrap_or(raw);
+        return (stripped.to_string(), 200_000);
+    };
+
+    // Max context per family. Opus 4+ is 1M (beta); earlier Opus were 200K.
+    // We pick 1M for opus since modern builds are all 4+. For sonnet/haiku always 200K.
+    let max_tokens = if family == "opus" { 1_000_000 } else { 200_000 };
+
+    // Walk the dash-separated parts to extract version numbers.
+    let parts: Vec<&str> = raw.split('-').collect();
+    let family_idx = parts.iter().position(|p| p.to_lowercase() == family);
+
+    let is_date = |s: &str| s.len() == 8 && s.chars().all(|c| c.is_ascii_digit());
+    let is_version = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()) && !is_date(s);
+
+    let mut version_parts: Vec<String> = Vec::new();
+    if let Some(fi) = family_idx {
+        // Modern format: claude-<family>-<v1>-<v2>-...-<date>
+        for p in &parts[fi + 1..] {
+            if is_version(p) {
+                version_parts.push(p.to_string());
+            } else {
+                break;
+            }
+        }
+        // Legacy fallback: claude-<v1>-<v2>-<family>-<date>
+        if version_parts.is_empty() {
+            for p in &parts[..fi] {
+                if is_version(p) {
+                    version_parts.push(p.to_string());
+                }
+            }
+        }
+    }
+
+    let label = if version_parts.is_empty() {
+        family.to_string()
+    } else {
+        format!("{}-{}", family, version_parts.join("-"))
+    };
+
+    (label, max_tokens)
+}
+
 /// Extract model and max tokens from JSONL lines.
 fn detect_model(lines: &[String]) -> (String, u64) {
     for line in lines.iter().rev().take(200) {
@@ -115,17 +172,12 @@ fn detect_model(lines: &[String]) -> (String, u64) {
                 .and_then(|m| m.get("model"))
                 .and_then(|m| m.as_str())
             {
-                if model.contains("opus") {
-                    return ("opus-4-6".to_string(), 1_000_000);
-                } else if model.contains("sonnet") {
-                    return ("sonnet-4".to_string(), 200_000);
-                } else if model.contains("haiku") {
-                    return ("haiku-3.5".to_string(), 200_000);
-                }
+                return parse_model_string(model);
             }
         }
     }
-    ("opus-4-6".to_string(), 1_000_000)
+    // No model info found - default to opus 1M (common case)
+    ("opus".to_string(), 1_000_000)
 }
 
 /// Extract real token usage from the last assistant message's usage fields.
