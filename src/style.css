@@ -683,9 +683,11 @@ body {
 .perm-btn.dismiss:hover { background: var(--accent-bg); color: var(--text-secondary); }
 
 .compact-indicator {
-  color: var(--text-secondary);
-  font-size: 0.85em;
-  opacity: 0.75;
+  color: var(--text-muted);
+  font-size: 0.78em;
+  opacity: 0.85;
+  letter-spacing: 0.02em;
+  cursor: help;
 }
 
 .perm-btn kbd {
@@ -751,6 +753,8 @@ body {
   align-items: center;
   justify-content: center;
   line-height: 1;
+  flex: 1 1 0;
+  min-width: 0;
 }
 .metric-btn:hover { background: var(--btn-muted-hover); }
 .metric-btn.active {
@@ -1790,15 +1794,30 @@ select.field-input optgroup {
 /* ---- PIN (session list) ---- */
 
 .pin-btn {
-  opacity: 0.35;
-  transition: opacity 0.15s, color 0.15s;
+  opacity: 0.45;
+  color: var(--text-secondary);
+  background: transparent;
+  border-color: transparent;
+  transition: opacity 0.15s, color 0.15s, background 0.15s, border-color 0.15s, transform 0.15s;
 }
 .pin-btn:hover {
-  opacity: 0.75;
+  opacity: 0.85;
+  background: var(--btn-muted-bg);
+  border-color: var(--btn-muted-border);
+}
+.pin-btn .pin-icon {
+  display: block;
+  transform: rotate(35deg);
+  transition: transform 0.15s;
 }
 .pin-btn.pinned {
   opacity: 1;
   color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+.pin-btn.pinned .pin-icon {
+  transform: rotate(0deg);
 }
 
 .pinned-divider {

@@ -66,7 +66,15 @@
 ### Behavior
 - [x] Relaxed idle/ghost thresholds (active <= 15min, ghost > 60min)
 
-## v1.3.0 (current)
+## v1.3.2 (current)
+
+### UI Polish
+- [x] Usage metric buttons (5H/WEEK/SONNET) stretch to fill parent row (`flex: 1 1 0`)
+- [x] Pin icon redesign: SVG pushpin with state-aware rotation (35° tilt unpinned, upright pinned) + accent color when pinned + filled background pill
+- [x] Compactions indicator: replaced cryptic `↻` glyph with explicit "{N} compactions" label, smaller font (0.78em), `title=` tooltip explaining what it counts
+- [x] Window pinning to bottom-right corner: DWM-aware via `DWMWA_EXTENDED_FRAME_BOUNDS` + Win32 `SetWindowPos`. Accounts for Win11 borderless invisible drop-shadow margin so visible edges land flush on screen corner. Same code path used on first build and on every subsequent tray show -> unified behavior, no more 5-8px gap after collapse/expand
+
+## v1.3.0
 
 ### Custom Commands
 - [x] Commands library in Settings (add/edit/delete commands)

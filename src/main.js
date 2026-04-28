@@ -363,13 +363,20 @@ function renderSession(session, ctx, index) {
   const numberPrefix = index ? `<span class="session-number">#${index}</span> ` : "";
   const barLabel = numberPrefix + session.name + renderAlertIcon(alertTier) + renderStatusBadge(status);
   // Compaction count next to percentage (saves a line)
-  const compactPrefix = ctx && ctx.compaction_count > 0
-    ? `<span class="compact-indicator">&#x21BB;${ctx.compaction_count} · </span>`
+  const compactCount = ctx && ctx.compaction_count > 0 ? ctx.compaction_count : 0;
+  const compactLabel = compactCount === 1 ? "compaction" : "compactions";
+  const compactTooltip = compactCount > 0
+    ? `Number of /compact runs in this session (${compactCount})`
+    : "";
+  const compactPrefix = compactCount > 0
+    ? `<span class="compact-indicator" title="${compactTooltip}">${compactCount} ${compactLabel} · </span>`
     : "";
 
   const safeName = escapeHtml(session.name || "session");
   const pinned = !!(settings.sessionPins && settings.sessionPins.has(session.session_id));
-  let actions = `<button class="action-icon-btn pin-btn${pinned ? ' pinned' : ''}" data-action="toggle-pin" data-session-id="${escapeHtml(session.session_id)}" title="${pinned ? 'Unpin' : 'Pin to top'}">&#x2B06;</button>`;
+  // Pushpin SVG (single path, currentColor). State driven by CSS class.
+  const PIN_SVG = `<svg class="pin-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M16 4h-1V3a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v1H8a1 1 0 0 0-1 1v3.586a1 1 0 0 0 .293.707L9 11v3H6a1 1 0 0 0 0 2h5v5a1 1 0 0 0 2 0v-5h5a1 1 0 0 0 0-2h-3v-3l1.707-1.707A1 1 0 0 0 17 7.586V5a1 1 0 0 0-1-1z"/></svg>`;
+  let actions = `<button class="action-icon-btn pin-btn${pinned ? ' pinned' : ''}" data-action="toggle-pin" data-session-id="${escapeHtml(session.session_id)}" title="${pinned ? 'Unpin' : 'Pin to top'}">${PIN_SVG}</button>`;
   actions += `<button class="action-icon-btn" data-pid="${session.pid}" data-action="compact" title="Compact session">&#x21BB;</button>`;
   actions += `<button class="action-icon-btn" data-action="open-send-popover" data-session-id="${escapeHtml(session.session_id)}" data-pid="${session.pid}" data-name="${safeName}" title="Send command">&#x22EF;</button>`;
   if (ctx) {

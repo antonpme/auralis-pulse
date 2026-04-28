@@ -89,6 +89,98 @@ fn get_work_area_logical(scale: f64, screen_w: f64, screen_h: f64) -> (f64, f64,
     (0.0, 0.0, screen_w / scale, (screen_h - 48.0) / scale)
 }
 
+/// Pin window flush against the bottom-right corner of the work area.
+///
+/// Windows 11 borderless windows have an invisible DWM "drop shadow" margin
+/// included in `GetWindowRect` / Tauri `outer_size`, but the visible frame
+/// (what the user sees as the window edge) is smaller. Naively positioning
+/// using outer rect leaves a 5-8 px gap between the visible edge and the
+/// screen corner.
+///
+/// This helper queries `DWMWA_EXTENDED_FRAME_BOUNDS` (the visual rect),
+/// computes the shadow margin, then uses `SetWindowPos` so the visual edges
+/// land exactly on the work-area edges.
+#[cfg(windows)]
+fn pin_to_work_area_corner(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+    };
+
+    let hwnd_raw = match window.hwnd() {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    let hwnd = HWND(hwnd_raw.0 as *mut _);
+
+    let (_wl, _wt, wr_phys, wb_phys) = match get_work_area() {
+        Some(wa) => wa,
+        None => return,
+    };
+
+    // Outer rect: includes invisible DWM shadow on Win11 borderless windows
+    let mut outer = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    if unsafe { GetWindowRect(hwnd, &mut outer) }.is_err() {
+        return;
+    }
+    let outer_w = outer.right - outer.left;
+    let outer_h = outer.bottom - outer.top;
+
+    // Visual rect: excludes shadow. Right/bottom margins = outer - visual.
+    let mut visual = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    let dwm_ok = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut visual as *mut RECT as *mut _,
+            std::mem::size_of::<RECT>() as u32,
+        )
+    }
+    .is_ok();
+
+    let (margin_right, margin_bottom) = if dwm_ok {
+        (outer.right - visual.right, outer.bottom - visual.bottom)
+    } else {
+        (0, 0)
+    };
+
+    // Solve for outer.left/top so that visual.right == wr_phys, visual.bottom == wb_phys.
+    let new_x = wr_phys + margin_right - outer_w;
+    let new_y = wb_phys + margin_bottom - outer_h;
+
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            new_x,
+            new_y,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn pin_to_work_area_corner(window: &tauri::WebviewWindow) {
+    use tauri::{LogicalPosition, Position};
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let scale = monitor.scale_factor();
+        let screen = monitor.size();
+        let win_size = window
+            .outer_size()
+            .unwrap_or_else(|_| tauri::PhysicalSize::new(810, 520));
+        let w = win_size.width as f64 / scale;
+        let h = win_size.height as f64 / scale;
+        let (_wl, _wt, wr, wb) =
+            get_work_area_logical(scale, screen.width as f64, screen.height as f64);
+        let x = wr - w;
+        let y = wb - h;
+        let _ = window.set_position(Position::Logical(LogicalPosition::new(x, y)));
+    }
+}
+
 struct UsageState {
     data: Mutex<Option<serde_json::Value>>,
 }
@@ -232,19 +324,18 @@ async fn set_auto_hide(
 }
 
 #[tauri::command]
-async fn resize_window(width: f64, height: f64, window: tauri::Window) -> Result<(), String> {
-    use tauri::{LogicalSize, LogicalPosition};
-    // Anchor to bottom-right corner using actual work area (no magic numbers)
-    if let Ok(Some(monitor)) = window.primary_monitor() {
-        let screen = monitor.size();
-        let scale = monitor.scale_factor();
-        let (_wl, _wt, wr, wb) = get_work_area_logical(scale, screen.width as f64, screen.height as f64);
-        let x = wr - width;
-        let y = wb - height;
-        let _ = window.set_position(tauri::Position::Logical(LogicalPosition::new(x, y)));
-    }
-    window.set_size(tauri::Size::Logical(LogicalSize::new(width, height)))
-        .map_err(|e| e.to_string())
+async fn resize_window(
+    width: f64,
+    height: f64,
+    window: tauri::WebviewWindow,
+) -> Result<(), String> {
+    use tauri::LogicalSize;
+    window
+        .set_size(tauri::Size::Logical(LogicalSize::new(width, height)))
+        .map_err(|e| e.to_string())?;
+    // Re-pin in physical pixels after resize so corner stays flush across DPI scales
+    pin_to_work_area_corner(&window);
+    Ok(())
 }
 
 #[tauri::command]
@@ -494,25 +585,14 @@ fn main() {
                                 // Show first, then position - Windows can reset position during show()
                                 let _ = window.show();
                                 let _ = window.set_focus();
-                                // Position using actual work area (no magic taskbar offsets)
-                                if let Ok(Some(monitor)) = window.primary_monitor() {
-                                    let screen = monitor.size();
-                                    let scale = monitor.scale_factor();
-                                    let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
-                                        (popup_w * scale) as u32, (popup_h * scale) as u32
-                                    ));
-                                    let w = win_size.width as f64 / scale;
-                                    let h = win_size.height as f64 / scale;
-                                    let (_wl, _wt, wr, wb) = get_work_area_logical(scale, screen.width as f64, screen.height as f64);
-                                    let x = wr - w;
-                                    let y = wb - h;
-                                    let _ = window.set_position(tauri::Position::Logical(
-                                        tauri::LogicalPosition::new(x, y),
-                                    ));
-                                }
+                                // Pin in physical pixels (no DPI rounding drift)
+                                pin_to_work_area_corner(&window);
                             }
                             return; // Don't create another window
                         } else {
+                            // Initial position (logical) - just a hint to avoid flicker.
+                            // pin_to_work_area_corner below will snap to exact pixel position
+                            // using DWM-aware physical math (handles Win11 borderless shadow).
                             let (x, y) = {
                                 let primary = app.primary_monitor().ok().flatten();
                                 match primary {
@@ -526,7 +606,7 @@ fn main() {
                                 }
                             };
 
-                            let _window = WebviewWindowBuilder::new(
+                            let new_window = WebviewWindowBuilder::new(
                                 app,
                                 "pulse",
                                 WebviewUrl::App("index.html".into()),
@@ -540,6 +620,10 @@ fn main() {
                             .skip_taskbar(true)
                             .build()
                             .expect("Failed to create window");
+
+                            // Snap to exact corner using DWM extended frame bounds.
+                            // Same code path as on subsequent shows -> unified behavior.
+                            pin_to_work_area_corner(&new_window);
                         }
                     }
                 })
