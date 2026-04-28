@@ -8,7 +8,7 @@ Stop guessing how much context is left. Stop missing permission popups buried in
 
 **Session monitoring** - See every active Claude Code session with token usage, model info (parsed correctly across Opus/Sonnet/Haiku versions), duration, compaction count, and PID. Sessions are color-coded by context fill level. Numbered #1, #2, #3 for quick reference.
 
-**Filter, sort, pin** - Filter by status (active/idle/ghost) or project. Sort by context %, duration, last activity, or alphabetically. Pin important sessions to top via ⬆ icon (pinned sessions stay visible regardless of filter). State persisted across restarts.
+**Filter, sort, pin** - Filter by status (active/idle/ghost) or project. Sort by context %, duration, last activity, or alphabetically. Pin important sessions to top via the pushpin icon (pinned sessions stay visible regardless of filter, icon stands upright + accent-colored when pinned). State persisted across restarts.
 
 **Custom Commands** - Library of commands (slash commands like `/compact` or natural-language messages, multi-line supported). Send any command to any session via the `⋯` menu on the card. Reliable delivery via `WriteConsoleInput` - bypasses window focus and Windows Terminal's input filter, so commands reach the target PID even when the app is in the background or another tab is active. Optional confirmation dialog for destructive commands.
 
@@ -97,7 +97,7 @@ For permissions, a lightweight HTTP server runs on `127.0.0.1:59428`. The CLI ho
 
 ## Roadmap
 
-**v1.3** (current) - Custom Commands library, 3-tier Alert Presets with auto-fire countdown, per-session preset assignment, auto-compact safety gate, pin sessions, WriteConsoleInput for reliable command delivery (bypasses focus/WT tabs), correct model version parsing, DevTools enabled in release builds
+**v1.3.2** (current) - Custom Commands library, 3-tier Alert Presets with auto-fire countdown, per-session preset assignment, auto-compact safety gate, pin sessions (pushpin icon, state-aware), WriteConsoleInput for reliable command delivery (bypasses focus/WT tabs), correct model version parsing, DevTools enabled in release builds, DWM-aware window pinning (no gap on Win11 borderless), explicit "{N} compactions" label with tooltip, usage metric buttons fill row width
 
 **v1.4** - Cross-platform (macOS, Linux), auto-update, GitHub Actions CI, configurable keyboard shortcuts
 
