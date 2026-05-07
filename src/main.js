@@ -2,6 +2,8 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 const app = document.getElementById("app");
+const appMain = document.getElementById("app-main");
+const appOverlays = document.getElementById("app-overlays");
 let currentMetric = localStorage.getItem("pulse-tray-metric") || "weekly";
 let currentView = "main"; // "main" | "settings"
 let renderLock = false;
@@ -376,12 +378,15 @@ function renderSession(session, ctx, index) {
   const pinned = !!(settings.sessionPins && settings.sessionPins.has(session.session_id));
   // Pushpin SVG (single path, currentColor). State driven by CSS class.
   const PIN_SVG = `<svg class="pin-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M16 4h-1V3a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v1H8a1 1 0 0 0-1 1v3.586a1 1 0 0 0 .293.707L9 11v3H6a1 1 0 0 0 0 2h5v5a1 1 0 0 0 2 0v-5h5a1 1 0 0 0 0-2h-3v-3l1.707-1.707A1 1 0 0 0 17 7.586V5a1 1 0 0 0-1-1z"/></svg>`;
-  let actions = `<button class="action-icon-btn pin-btn${pinned ? ' pinned' : ''}" data-action="toggle-pin" data-session-id="${escapeHtml(session.session_id)}" title="${pinned ? 'Unpin' : 'Pin to top'}">${PIN_SVG}</button>`;
-  actions += `<button class="action-icon-btn" data-pid="${session.pid}" data-action="compact" title="Compact session">&#x21BB;</button>`;
-  actions += `<button class="action-icon-btn" data-action="open-send-popover" data-session-id="${escapeHtml(session.session_id)}" data-pid="${session.pid}" data-name="${safeName}" title="Send command">&#x22EF;</button>`;
-  if (ctx) {
-    actions += `<button class="action-icon-btn" data-action="open-preset-popover" data-session-id="${escapeHtml(session.session_id)}" data-name="${safeName}" title="Alert preset">&#x2699;</button>`;
+  // Active-preset chip (replaces gear icon). Shows preset name, click opens picker popover.
+  // Compact icon removed - duplicated in send menu (⋯).
+  let actions = "";
+  if (ctx && preset) {
+    const presetName = escapeHtml(preset.name || "preset");
+    actions += `<button class="action-preset-chip" data-action="open-preset-popover" data-session-id="${escapeHtml(session.session_id)}" data-name="${safeName}" title="Alert preset: ${presetName} (click to change)"><span class="preset-chip-label">${presetName}</span><span class="preset-chip-caret">&#x25BE;</span></button>`;
   }
+  actions += `<button class="action-icon-btn pin-btn${pinned ? ' pinned' : ''}" data-action="toggle-pin" data-session-id="${escapeHtml(session.session_id)}" title="${pinned ? 'Unpin' : 'Pin to top'}">${PIN_SVG}</button>`;
+  actions += `<button class="action-icon-btn" data-action="open-send-popover" data-session-id="${escapeHtml(session.session_id)}" data-pid="${session.pid}" data-name="${safeName}" title="Send command">&#x22EF;</button>`;
   if (status !== "active") {
     actions += `<button class="action-icon-btn dismiss-icon-btn" data-pid="${session.pid}" data-action="dismiss" title="Dismiss session">&#x2715;</button>`;
   }
@@ -1014,10 +1019,8 @@ function renderPresetPickerBody(sessionId, sessionName) {
     }).join("");
   }
 
+  // Header is provided by modal-header (no popover-header needed now that this is a modal).
   return `
-    <div class="popover-header">
-      <span class="popover-title">Alerts &middot; ${escapeHtml(sessionName)}</span>
-    </div>
     <div class="popover-field">
       <label class="popover-label">Preset</label>
       <select class="field-input popover-preset-select" data-session-id="${escapeHtml(sessionId)}">
@@ -1036,9 +1039,6 @@ function renderPresetPickerBody(sessionId, sessionName) {
         <span>Allow auto-compact on this session</span>
       </label>
       <div class="popover-hint">Off by default. When off, /compact auto-fire is blocked even if configured in preset. Other commands (Crystallize, etc.) still fire normally.</div>
-    </div>
-    <div class="popover-footer">
-      <button class="btn btn-secondary btn-sm" data-action="go-to-alerts">Manage presets</button>
     </div>
   `;
 }
@@ -1554,62 +1554,79 @@ function closePopover() {
 
 // ---- RENDER ----
 
-async function render() {
+// Renders only the overlay layer (modal + popover + toasts).
+// Critically, this does NOT touch #app-main, so modal/popover state survives auto-refresh.
+function renderOverlays() {
+  appOverlays.innerHTML = renderModal() + renderPopover() + renderToasts();
+}
+
+// Full render, both layers. Use this when state changes affect both
+// (e.g., user clicks something that updates main panel AND opens a modal).
+async function render(opts = {}) {
   if (renderLock) return;
   renderLock = true;
   try {
-    let mainHtml;
-    if (currentView === "settings") {
-      mainHtml = await renderSettingsView();
-    } else {
-      const [leftHtml, rightHtml] = await Promise.all([renderLeftPanel(), renderRightPanel()]);
+    const updateMain = opts.main !== false;
+    const updateOverlays = opts.overlays !== false;
 
-      let usageTier = "";
-      let appVersion = "";
-      try {
-        const data = await invoke("get_usage");
-        if (data && data.tier) usageTier = formatTier(data.tier);
-      } catch (_) {}
-      try { appVersion = await invoke("get_version"); } catch (_) {}
+    if (updateMain) {
+      let mainHtml;
+      if (currentView === "settings") {
+        mainHtml = await renderSettingsView();
+      } else {
+        const [leftHtml, rightHtml] = await Promise.all([renderLeftPanel(), renderRightPanel()]);
 
-      mainHtml = `
-        <div class="header">
-          <div class="header-left">
-            <div class="header-title-row">
-              <h1>AURALIS PULSE</h1>
-              ${usageTier ? `<span class="tier-label">${usageTier}</span>` : ""}
+        let usageTier = "";
+        let appVersion = "";
+        try {
+          const data = await invoke("get_usage");
+          if (data && data.tier) usageTier = formatTier(data.tier);
+        } catch (_) {}
+        try { appVersion = await invoke("get_version"); } catch (_) {}
+
+        mainHtml = `
+          <div class="header">
+            <div class="header-left">
+              <div class="header-title-row">
+                <h1>AURALIS PULSE</h1>
+                ${usageTier ? `<span class="tier-label">${usageTier}</span>` : ""}
+              </div>
+              <span class="header-subtitle">COMPANION FOR CLAUDE CODE${appVersion ? ` · v${appVersion}` : ""}</span>
             </div>
-            <span class="header-subtitle">COMPANION FOR CLAUDE CODE${appVersion ? ` · v${appVersion}` : ""}</span>
+            <div class="header-right">
+                <button class="header-icon-btn" data-action="open-settings" title="Settings">&#x2699;</button>
+              <button class="refresh-icon-btn" data-action="refresh" title="Refresh all">&#x21bb;</button>
+            </div>
           </div>
-          <div class="header-right">
-              <button class="header-icon-btn" data-action="open-settings" title="Settings">&#x2699;</button>
-            <button class="refresh-icon-btn" data-action="refresh" title="Refresh all">&#x21bb;</button>
+          <div class="split-container">
+            <div class="panel-left">${leftHtml}</div>
+            <div class="panel-right">${rightHtml}</div>
           </div>
-        </div>
-        <div class="split-container">
-          <div class="panel-left">${leftHtml}</div>
-          <div class="panel-right">${rightHtml}</div>
-        </div>
-      `;
+        `;
+      }
+      appMain.innerHTML = mainHtml;
     }
 
-    // Overlays layer on top of main content regardless of view
-    app.innerHTML = mainHtml + renderModal() + renderPopover() + renderToasts();
+    if (updateOverlays) {
+      renderOverlays();
+    }
   } catch (err) {
-    app.innerHTML = `<div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading...</div></div>`;
+    appMain.innerHTML = `<div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading...</div></div>`;
   } finally {
     renderLock = false;
   }
 }
 
 // ---- EVENTS ----
-listen("permission-request", () => { if (currentView === "main") render(); });
-listen("sessions-updated", () => { if (currentView === "main") render(); });
-listen("usage-updated", () => { if (currentView === "main") render(); });
+// Auto-refresh listeners: only touch main panel. Active overlays stay frozen
+// so user interaction with modal/popover is never disturbed by background updates.
+listen("permission-request", () => { if (currentView === "main") render({ overlays: false }); });
+listen("sessions-updated", () => { if (currentView === "main") render({ overlays: false }); });
+listen("usage-updated", () => { if (currentView === "main") render({ overlays: false }); });
 listen("open-settings", () => { currentView = "settings"; render(); });
 
 render();
-setInterval(() => { if (currentView === "main") render(); }, 15000);
+setInterval(() => { if (currentView === "main") render({ overlays: false }); }, 15000);
 
 // ---- EVENT DELEGATION ----
 document.addEventListener("click", async (e) => {
@@ -1763,15 +1780,21 @@ document.addEventListener("click", async (e) => {
     return;
   }
 
-  // Session card popovers (Phase 4)
+  // Session card overlays
+  // Preset picker -> CENTERED MODAL (heavy interaction, must not flicker on auto-refresh)
   if (action === "open-preset-popover") {
     const sessionId = target.dataset.sessionId;
     const name = target.dataset.name || "session";
-    if (activePopover && activePopover.type === "session-preset" && activePopover.data?.sessionId === sessionId) {
-      closePopover();
-    } else {
-      openPopover("session-preset", target, { sessionId, name });
-    }
+    openModal("session-preset", {
+      title: `Alerts · ${escapeHtml(name)}`,
+      body: renderPresetPickerBody(sessionId, name),
+      sessionId,
+      sessionName: name,
+      actions: `
+        <button class="btn btn-secondary btn-sm" data-action="go-to-alerts">Manage presets</button>
+        <button class="btn btn-primary" data-action="close-modal">Done</button>
+      `,
+    });
     return;
   }
   if (action === "open-send-popover") {
@@ -1802,6 +1825,7 @@ document.addEventListener("click", async (e) => {
   }
   if (action === "go-to-alerts") {
     closePopover();
+    closeModal();
     activeSettingsTab = "alerts";
     currentView = "settings";
     render();
@@ -1846,14 +1870,18 @@ document.addEventListener("change", async (e) => {
     return;
   }
 
-  // Preset picker dropdown inside session popover
+  // Preset picker dropdown inside session preset modal
   if (e.target.classList && e.target.classList.contains("popover-preset-select")) {
     const sessionId = e.target.dataset.sessionId;
     const presetId = e.target.value;
     if (!settings.sessionPresets) settings.sessionPresets = {};
     settings.sessionPresets[sessionId] = presetId;
     saveSessionPresets();
-    render(); // re-renders popover body with new selection preview
+    // Refresh modal body so summary/thresholds reflect new selection
+    if (activeModal && activeModal.type === "session-preset" && activeModal.data?.sessionId === sessionId) {
+      activeModal.data.body = renderPresetPickerBody(sessionId, activeModal.data.sessionName || "session");
+    }
+    render(); // updates main (chip text) + overlay (modal body)
     const preset = settings.presets.find(p => p.id === presetId);
     if (preset) showToast({ type: "info", message: `Assigned '${preset.name}'`, duration: 1800 });
     return;
@@ -1865,6 +1893,10 @@ document.addEventListener("change", async (e) => {
     if (!settings.sessionAutoCompact) settings.sessionAutoCompact = {};
     settings.sessionAutoCompact[sessionId] = !!e.target.checked;
     saveSessionAutoCompact();
+    // Refresh modal body so checkbox state persists in cached body string
+    if (activeModal && activeModal.type === "session-preset" && activeModal.data?.sessionId === sessionId) {
+      activeModal.data.body = renderPresetPickerBody(sessionId, activeModal.data.sessionName || "session");
+    }
     render();
     const label = e.target.checked ? "enabled" : "disabled";
     showToast({ type: "info", message: `Auto-compact ${label} for this session`, duration: 1800 });

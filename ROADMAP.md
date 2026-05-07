@@ -66,7 +66,21 @@
 ### Behavior
 - [x] Relaxed idle/ghost thresholds (active <= 15min, ghost > 60min)
 
-## v1.3.2 (current)
+## v1.3.5 (current)
+
+### UI Polish + Architecture
+- [x] DOM split into `#app-main` and `#app-overlays`: auto-refresh (15s interval, sessions-updated, usage-updated, permission-request) updates ONLY main panel. Active modals/popovers/toasts no longer flicker or re-render when sessions/usage refresh in the background. User interaction with overlays is never disturbed by background updates.
+- [x] Preset picker promoted from anchored popover to centered modal: full backdrop, centered card, ESC + click-outside dismiss, Done button. Heavy interaction (preset selection + auto-compact toggle + manage presets navigation) deserves a focused modal not a dropdown.
+- [x] Fix: `#app-main` is now `display:flex; flex-direction:column; flex:1; min-height:0` so the inner `.split-container flex:1` chain has a height to fill (regression from DOM split caused right panel to clip at the bottom).
+
+## v1.3.3
+
+### UI Polish
+- [x] Active-preset chip replaces gear icon: shows current preset name on the session card, click opens picker (info + action in one element)
+- [x] Removed compact icon from session actions row (duplicated in send menu `⋯`); resulting row: preset chip + pin + send-menu + dismiss-if-applicable
+- [x] Glass theme: corner radii toned down (card 10->7px, btn 6->4px, badge 8->5px, bar 3->2px) so small components don't read as overly bubbly
+
+## v1.3.2
 
 ### UI Polish
 - [x] Usage metric buttons (5H/WEEK/SONNET) stretch to fill parent row (`flex: 1 1 0`)
