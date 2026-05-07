@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Auralis Pulse - Mock Studio</title>
+    <!-- Single source of truth for visuals: import the real app stylesheet -->
+    <link rel="stylesheet" href="../src/style.css" />
+    <link rel="stylesheet" href="./mock.css" />
+  </head>
+  <body data-theme="cyberpunk">
+    <header class="studio-bar">
+      <div class="studio-title">
+        <span class="studio-brand">Auralis Pulse</span>
+        <span class="studio-sub">Mock Studio - sample data only, no real session info</span>
+      </div>
+      <div class="studio-controls" id="studio-controls">
+        <div class="control-group">
+          <span class="control-label">Theme</span>
+          <button data-mock-action="theme" data-value="cyberpunk" class="control-btn active">Cyberpunk</button>
+          <button data-mock-action="theme" data-value="glass" class="control-btn">Glass</button>
+          <button data-mock-action="theme" data-value="light" class="control-btn">Light</button>
+        </div>
+        <div class="control-group">
+          <span class="control-label">View</span>
+          <button data-mock-action="view" data-value="main" class="control-btn active">Main</button>
+          <button data-mock-action="view" data-value="settings" class="control-btn">Settings</button>
+        </div>
+        <div class="control-group" id="settings-tab-controls" style="display:none">
+          <span class="control-label">Tab</span>
+          <button data-mock-action="settings-tab" data-value="appearance" class="control-btn active">Appearance</button>
+          <button data-mock-action="settings-tab" data-value="behavior" class="control-btn">Behavior</button>
+          <button data-mock-action="settings-tab" data-value="alerts" class="control-btn">Alerts</button>
+          <button data-mock-action="settings-tab" data-value="commands" class="control-btn">Commands</button>
+          <button data-mock-action="settings-tab" data-value="about" class="control-btn">About</button>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Overlay</span>
+          <button data-mock-action="overlay" data-value="none" class="control-btn active">None</button>
+          <button data-mock-action="overlay" data-value="preset-modal" class="control-btn">Preset modal</button>
+          <button data-mock-action="overlay" data-value="send-popover" class="control-btn">Send popover</button>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Size</span>
+          <button data-mock-action="size" data-value="1" class="control-btn active">1x</button>
+          <button data-mock-action="size" data-value="1.5" class="control-btn">1.5x</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="studio-stage">
+      <div class="studio-frame" id="studio-frame">
+        <!-- This block mirrors real index.html structure exactly -->
+        <div id="mock-app">
+          <div id="mock-app-main"></div>
+          <div id="mock-app-overlays"></div>
+        </div>
+      </div>
+      <div class="studio-frame-meta" id="frame-meta">810 x 520</div>
+    </main>
+
+    <script type="module" src="./mock.js"></script>
+  </body>
+</html>

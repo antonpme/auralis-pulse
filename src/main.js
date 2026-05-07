@@ -1038,7 +1038,7 @@ function renderPresetPickerBody(sessionId, sessionName) {
         <input type="checkbox" class="popover-auto-compact" data-session-id="${escapeHtml(sessionId)}" ${(settings.sessionAutoCompact && settings.sessionAutoCompact[sessionId]) ? 'checked' : ''} />
         <span>Allow auto-compact on this session</span>
       </label>
-      <div class="popover-hint">Off by default. When off, /compact auto-fire is blocked even if configured in preset. Other commands (Crystallize, etc.) still fire normally.</div>
+      <div class="popover-hint">Off by default. When off, /compact auto-fire is blocked even if configured in preset. Other commands (Code review, Run tests, etc.) still fire normally.</div>
     </div>
   `;
 }

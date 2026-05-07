@@ -1,0 +1,153 @@
+/*
+ * Mock Studio chrome only. Visuals of the simulated app come from ../src/style.css.
+ * This file styles the studio bar, controls, and the framed stage that holds the mock window.
+ */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #0a0a10;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  color: #e6e8ee;
+  min-height: 100vh;
+}
+
+/* When mock is in light theme, give the stage a contrasting backdrop so the white
+   window doesn't blur into a dark page. */
+body[data-theme="light"] {
+  background: #232434;
+}
+
+.studio-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.studio-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.studio-brand {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+}
+.studio-sub {
+  font-size: 12px;
+  color: #8a8fa0;
+}
+
+.studio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: center;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 4px 4px 4px 10px;
+}
+
+.control-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8a8fa0;
+  margin-right: 4px;
+}
+
+.control-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #c4c8d4;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.control-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+.control-btn.active {
+  background: #6366f1;
+  color: #ffffff;
+  border-color: #6366f1;
+}
+
+.studio-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 40px 24px;
+  gap: 12px;
+  min-height: calc(100vh - 200px);
+}
+
+/* Framed window. Visual border + shadow that mimics how it sits on a real desktop. */
+.studio-frame {
+  width: 810px;
+  height: 520px;
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: 0 16px 60px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.3);
+  transform-origin: top center;
+  transition: transform 0.2s ease;
+}
+
+/* Inner mock-app: clone of real #app block. Must match style.css structure. */
+#mock-app {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-outer);
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+#mock-app-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#mock-app-overlays {
+  position: relative;
+  z-index: 100;
+}
+
+.studio-frame-meta {
+  font-size: 11px;
+  color: #6a6f80;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hide the mock controls visibly when capturing screenshots:
+   open the page, set up state, then add ?clean to URL to remove the studio bar. */
+body.clean .studio-bar { display: none; }
+body.clean .studio-frame-meta { display: none; }
+body.clean .studio-stage { padding: 40px; }

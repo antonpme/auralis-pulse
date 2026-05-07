@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Auralis Pulse - Cover</title>
+    <link rel="stylesheet" href="../src/style.css" />
+    <link rel="stylesheet" href="./cover.css" />
+  </head>
+  <body>
+    <div class="cover" id="cover">
+      <!-- Left: typography block -->
+      <div class="cover-text">
+        <div class="wordmark">
+          <span class="wordmark-line">auralis</span>
+          <span class="wordmark-line wordmark-accent">pulse</span>
+        </div>
+        <div class="tagline">
+          A tray companion<br>for Claude Code.<br>
+          <span class="tagline-quiet">On Windows. On watch.</span>
+        </div>
+        <div class="badges">
+          <span class="cover-badge">v1.3.5</span>
+          <span class="cover-badge">Tauri 2</span>
+          <span class="cover-badge">Rust</span>
+          <span class="cover-badge">Windows 10/11</span>
+          <span class="cover-badge">MIT</span>
+        </div>
+      </div>
+
+      <!-- Right: receding stack of three theme frames (filled inline by cover.js, no iframes) -->
+      <div class="cover-stack">
+        <div class="frame frame-back" data-theme-target="light"></div>
+        <div class="frame frame-mid" data-theme-target="glass"></div>
+        <div class="frame frame-front" data-theme-target="cyberpunk"></div>
+      </div>
+
+      <!-- Subtle accent: faint pulsing dot in the corner, like a status LED -->
+      <div class="cover-pulse-dot" aria-hidden="true"></div>
+    </div>
+
+    <!-- Capture button (hidden in screenshots via ?clean) -->
+    <button id="capture-btn" class="capture-btn">Capture cover.png</button>
+
+    <script src="./mock.js"></script>
+    <script src="./cover.js"></script>
+  </body>
+</html>
