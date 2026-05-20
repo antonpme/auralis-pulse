@@ -49,6 +49,20 @@ pub fn create_router(state: SharedState) -> Router {
         .with_state(state)
 }
 
+/// Builds the full router that combines the permission/health routes with the
+/// MCP sub-router (mounted at /mcp with bearer-auth). MCP is optional: if
+/// build_mcp_router is None, only the permission routes are served.
+pub fn create_combined_router(
+    state: SharedState,
+    mcp_router: Option<Router>,
+) -> Router {
+    let base = create_router(state);
+    match mcp_router {
+        Some(mcp) => base.nest("/mcp", mcp),
+        None => base,
+    }
+}
+
 async fn health() -> &'static str {
     "ok"
 }
@@ -276,6 +290,24 @@ pub async fn start_server(state: SharedState) {
         }
         Err(e) => {
             eprintln!("Warning: HTTP server failed to bind :59428 ({}). Permission forwarding disabled.", e);
+        }
+    }
+}
+
+/// Like start_server but also mounts the MCP server at /mcp.
+/// Used when an McpConfig has been generated/loaded at startup.
+pub async fn start_server_with_mcp(state: SharedState, mcp_router: Router) {
+    let app = create_combined_router(state, Some(mcp_router));
+    match tokio::net::TcpListener::bind("127.0.0.1:59428").await {
+        Ok(listener) => {
+            eprintln!("[pulse] HTTP server bound :59428 (permission + /mcp)");
+            axum::serve(listener, app).await.ok();
+        }
+        Err(e) => {
+            eprintln!(
+                "Warning: HTTP server failed to bind :59428 ({}). Permission + MCP disabled.",
+                e
+            );
         }
     }
 }

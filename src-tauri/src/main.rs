@@ -4,6 +4,7 @@ mod api;
 mod compact;
 mod context;
 mod credentials;
+mod mcp;
 mod notifications;
 mod server;
 mod sessions;
@@ -312,6 +313,13 @@ async fn clear_usage_cache(
     Ok(())
 }
 
+/// Expose the MCP config (port, url, token) so the Settings UI can render
+/// connection details and a copy-to-clipboard `claude mcp add` command.
+#[tauri::command]
+async fn get_mcp_config() -> Result<mcp::McpConfig, String> {
+    mcp::McpConfig::load_or_generate()
+}
+
 #[tauri::command]
 async fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -511,6 +519,7 @@ fn main() {
             get_usage,
             refresh_usage,
             clear_usage_cache,
+            get_mcp_config,
             set_tray_metric,
             get_version,
             set_always_on_top,
@@ -529,11 +538,29 @@ fn main() {
                 });
             }
 
-            // Start HTTP server
+            // Start HTTP server (permission forwarding + MCP at /mcp).
+            // MCP config is generated / loaded on first launch and persisted to
+            // %LOCALAPPDATA%\auralis-pulse\mcp.json.
             {
                 let state = server_state.clone();
                 tauri::async_runtime::spawn(async move {
-                    server::start_server(state).await;
+                    match mcp::McpConfig::load_or_generate() {
+                        Ok(cfg) => {
+                            eprintln!(
+                                "[pulse] MCP enabled at {} (token in %LOCALAPPDATA%\\auralis-pulse\\mcp.json)",
+                                cfg.url
+                            );
+                            let router = mcp::build_mcp_router(cfg.token);
+                            server::start_server_with_mcp(state, router).await;
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[pulse] MCP disabled (config error: {}). Falling back to permission-only server.",
+                                e
+                            );
+                            server::start_server(state).await;
+                        }
+                    }
                 });
             }
 
