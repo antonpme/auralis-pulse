@@ -295,6 +295,23 @@ async fn refresh_usage(
     Ok(result)
 }
 
+/// Wipe the on-disk usage cache and clear the in-memory mirror. Caller is expected
+/// to immediately invoke refresh_usage afterwards to repopulate.
+#[tauri::command]
+async fn clear_usage_cache(
+    usage_state: tauri::State<'_, UsageState>,
+) -> Result<(), String> {
+    if let Ok(path) = usage_cache_path() {
+        if path.exists() {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("Failed to delete cache file: {}", e))?;
+        }
+    }
+    let mut data = usage_state.data.lock().await;
+    *data = None;
+    Ok(())
+}
+
 #[tauri::command]
 async fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -493,6 +510,7 @@ fn main() {
             get_pending_permissions,
             get_usage,
             refresh_usage,
+            clear_usage_cache,
             set_tray_metric,
             get_version,
             set_always_on_top,

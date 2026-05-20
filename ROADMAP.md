@@ -66,7 +66,15 @@
 ### Behavior
 - [x] Relaxed idle/ghost thresholds (active <= 15min, ghost > 60min)
 
-## v1.3.5 (current)
+## v1.3.6 (current)
+
+### Bugfix: Usage API parse regression
+- [x] `UsageLimit.resets_at` -> `Option<String>`. Anthropic started returning `null` on inactive limits (e.g. `seven_day_sonnet` when unused), serde required String, parse failed on every fetch since ~2026-05-15, background loop stuck retrying every 5min with no UI signal.
+- [x] Refresh button no longer swallows errors silently. Surfaces `Refresh failed: <reason>` toast on failure, `Usage refreshed` toast on success. Spinner rotates icon while inflight.
+- [x] New "USAGE DIAGNOSTICS" group in Settings -> Behavior: shows last fetched age (live) + "Clear usage cache & retry" button. Wipes `%LOCALAPPDATA%\auralis-pulse\usage-cache.json` and forces a fresh API call.
+- [x] New Tauri command `clear_usage_cache` (also clears in-memory state).
+
+## v1.3.5
 
 ### UI Polish + Architecture
 - [x] DOM split into `#app-main` and `#app-overlays`: auto-refresh (15s interval, sessions-updated, usage-updated, permission-request) updates ONLY main panel. Active modals/popovers/toasts no longer flicker or re-render when sessions/usage refresh in the background. User interaction with overlays is never disturbed by background updates.

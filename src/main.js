@@ -716,6 +716,19 @@ async function renderBehaviorTab() {
   let isAutostart = false;
   try { isAutostart = await invoke("get_autostart"); } catch (_) {}
 
+  // Pull last-fetch time from cache so the user can see how stale things are.
+  let lastFetchLabel = "never";
+  try {
+    const data = await invoke("get_usage");
+    if (data && data.fetched_at) {
+      const ageSec = Math.max(0, Math.floor(Date.now() / 1000 - data.fetched_at));
+      if (ageSec < 60) lastFetchLabel = `${ageSec}s ago`;
+      else if (ageSec < 3600) lastFetchLabel = `${Math.floor(ageSec / 60)}m ago`;
+      else if (ageSec < 86400) lastFetchLabel = `${Math.floor(ageSec / 3600)}h ago`;
+      else lastFetchLabel = `${Math.floor(ageSec / 86400)}d ago`;
+    }
+  } catch (_) {}
+
   return `
     <div class="settings-group">
       <div class="settings-group-label">WINDOW BEHAVIOR</div>
@@ -745,6 +758,19 @@ async function renderBehaviorTab() {
           </div>
         </div>
       </div>
+    </div>
+    <div class="settings-group">
+      <div class="settings-group-label">USAGE DIAGNOSTICS</div>
+      <div class="settings-card">
+        <div class="settings-item">
+          <span class="settings-item-label">Last fetched</span>
+          <span class="settings-item-value">${lastFetchLabel}</span>
+        </div>
+        <div class="settings-item settings-item-action">
+          <button class="btn btn-secondary" data-action="clear-usage-cache">Clear usage cache &amp; retry</button>
+        </div>
+      </div>
+      <div class="settings-group-hint">Wipes the on-disk cache and forces a fresh API call. Use if usage stays stale or refresh fails.</div>
     </div>
   `;
 }
@@ -1683,7 +1709,46 @@ document.addEventListener("click", async (e) => {
   }
 
   if (action === "refresh") {
-    try { await invoke("refresh_usage"); } catch (_) {}
+    // Visual: spin the icon while we wait
+    target.classList.add("refreshing");
+    target.disabled = true;
+    try {
+      await invoke("refresh_usage");
+      showToast({ type: "info", message: "Usage refreshed", duration: 1500 });
+    } catch (err) {
+      // Surface the actual error so silent 5-day staleness can't repeat.
+      // err is the Result<_, String> err arm from refresh_usage (api::fetch_usage formatted).
+      const msg = String(err || "Unknown error").slice(0, 240);
+      showToast({ type: "error", message: `Refresh failed: ${msg}`, duration: 7000 });
+    } finally {
+      target.classList.remove("refreshing");
+      target.disabled = false;
+    }
+    render();
+    return;
+  }
+
+  if (action === "clear-usage-cache") {
+    target.disabled = true;
+    const original = target.textContent;
+    target.textContent = "Clearing...";
+    try {
+      await invoke("clear_usage_cache");
+      target.textContent = "Re-fetching...";
+      try {
+        await invoke("refresh_usage");
+        showToast({ type: "info", message: "Cache cleared, usage refreshed", duration: 2000 });
+      } catch (err) {
+        const msg = String(err || "Unknown error").slice(0, 240);
+        showToast({ type: "error", message: `Cache cleared, but refresh failed: ${msg}`, duration: 7000 });
+      }
+    } catch (err) {
+      const msg = String(err || "Unknown error").slice(0, 240);
+      showToast({ type: "error", message: `Cache clear failed: ${msg}`, duration: 5000 });
+    } finally {
+      target.disabled = false;
+      target.textContent = original;
+    }
     render();
     return;
   }

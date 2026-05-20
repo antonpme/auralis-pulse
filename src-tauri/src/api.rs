@@ -14,7 +14,10 @@ pub struct UsageResponse {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct UsageLimit {
     pub utilization: f64,
-    pub resets_at: String,
+    // Anthropic returns null on this field for inactive limits (e.g. Sonnet when
+    // unused this week). Was String only until ~2026-05-15; making it optional
+    // unblocks parsing and surfaces null in the frontend as "resetting..." fallback.
+    pub resets_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
