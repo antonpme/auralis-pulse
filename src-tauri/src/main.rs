@@ -6,6 +6,7 @@ mod context;
 mod credentials;
 mod mcp;
 mod notifications;
+mod pulse_log;
 mod server;
 mod sessions;
 
@@ -538,27 +539,37 @@ fn main() {
                 });
             }
 
-            // Start HTTP server (permission forwarding + MCP at /mcp).
-            // MCP config is generated / loaded on first launch and persisted to
-            // %LOCALAPPDATA%\auralis-pulse\mcp.json.
+            // Start permission HTTP server on 127.0.0.1:59428 (its own port,
+            // its own task, independent of MCP). This is the hook callback
+            // endpoint - it MUST work even if MCP fails.
             {
                 let state = server_state.clone();
                 tauri::async_runtime::spawn(async move {
+                    server::start_server(state).await;
+                });
+            }
+
+            // Start MCP server on 127.0.0.1:59429 (separate port, separate
+            // task, separate router). Failure here cannot affect the
+            // permission server. Config is loaded/generated and persisted to
+            // %LOCALAPPDATA%\auralis-pulse\mcp.json.
+            {
+                tauri::async_runtime::spawn(async move {
                     match mcp::McpConfig::load_or_generate() {
                         Ok(cfg) => {
-                            eprintln!(
-                                "[pulse] MCP enabled at {} (token in %LOCALAPPDATA%\\auralis-pulse\\mcp.json)",
+                            pulse_log!(
+                                "mcp",
+                                "MCP enabled at {} (token in mcp.json)",
                                 cfg.url
                             );
-                            let router = mcp::build_mcp_router(cfg.token);
-                            server::start_server_with_mcp(state, router).await;
+                            mcp::start_mcp_server(cfg).await;
                         }
                         Err(e) => {
-                            eprintln!(
-                                "[pulse] MCP disabled (config error: {}). Falling back to permission-only server.",
+                            pulse_log!(
+                                "mcp",
+                                "MCP disabled (config error: {})",
                                 e
                             );
-                            server::start_server(state).await;
                         }
                     }
                 });

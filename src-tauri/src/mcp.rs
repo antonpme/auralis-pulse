@@ -1,8 +1,13 @@
 //! Auralis Pulse MCP server.
 //!
 //! Exposes Pulse's state and actions to MCP clients (Claude Code, Claude Desktop,
-//! Cursor, etc.) over Streamable HTTP transport, mounted on the existing axum
-//! router at `/mcp`. Auth: bearer token in the Authorization header.
+//! Cursor, etc.) over Streamable HTTP transport on **its own dedicated port**
+//! (default 59429), independent of the permission-forwarding server on 59428.
+//!
+//! Why a separate port: nesting MCP under the same axum Router as the permission
+//! routes caused the whole HTTP server to silently fail to bind in v1.4.0-dev
+//! Phase 1. Splitting concerns by port avoids any future router interaction
+//! surprises and lets either subsystem fail independently of the other.
 //!
 //! Phase 1 (this file) ships only a `pulse_ping` health-check tool plus the
 //! config/persistence layer. Read tools, write tools, and notifications land in
@@ -12,7 +17,7 @@
 //! first launch so the user can wire a client with one command:
 //!
 //! ```text
-//! claude mcp add --transport http auralis-pulse http://127.0.0.1:59428/mcp \
+//! claude mcp add --transport http auralis-pulse http://127.0.0.1:59429/mcp \
 //!   --header "Authorization: Bearer <token>"
 //! ```
 
@@ -29,6 +34,10 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, sync::Arc};
 use tower_http::validate_request::ValidateRequestHeaderLayer;
+
+/// Default port for the MCP server. Distinct from the permission server (59428)
+/// to keep the two subsystems independent.
+pub const DEFAULT_MCP_PORT: u16 = 59429;
 
 // ============================================================================
 // Config: port + bearer token, persisted to disk so client config can reference.
@@ -50,21 +59,30 @@ impl McpConfig {
     }
 
     /// Load existing config from disk, or generate + persist a new one.
-    /// Port is currently fixed at 59428 (same as the permission server), MCP
-    /// rides on the `/mcp` sub-path.
+    /// Migration: configs with the legacy port (59428, shared with permission
+    /// server) are regenerated on the current DEFAULT_MCP_PORT.
     pub fn load_or_generate() -> Result<Self, String> {
         let path = Self::config_path()?;
         if path.exists() {
             let content = fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read mcp.json: {}", e))?;
             if let Ok(cfg) = serde_json::from_str::<McpConfig>(&content) {
-                return Ok(cfg);
+                if cfg.port == DEFAULT_MCP_PORT {
+                    return Ok(cfg);
+                }
+                // Legacy port (most likely 59428 from v1.4.0-dev Phase 1): migrate.
+                crate::pulse_log!(
+                    "mcp",
+                    "Migrating mcp.json from legacy port {} to {}",
+                    cfg.port,
+                    DEFAULT_MCP_PORT
+                );
+            } else {
+                crate::pulse_log!("mcp", "mcp.json was corrupt, regenerating");
             }
-            // Corrupt file: regenerate
-            eprintln!("[mcp] mcp.json was corrupt, regenerating");
         }
 
-        let port = 59428u16;
+        let port = DEFAULT_MCP_PORT;
         let token = generate_token();
         let url = format!("http://127.0.0.1:{}/mcp", port);
         let cfg = McpConfig { port, token, url };
@@ -144,14 +162,13 @@ impl ServerHandler for PulseMcp {
 }
 
 // ============================================================================
-// Mount: build an axum Router that nests the MCP service at "/" (root of the
-// nested mount, which becomes /mcp when nested by server.rs), with a bearer
-// auth layer in front of it.
+// Start: bind a dedicated listener and serve only the MCP service. Independent
+// of the permission HTTP server (which lives on its own port in server.rs).
 // ============================================================================
 
-/// Build the bearer-auth-protected MCP sub-router that the main server nests
-/// at `/mcp`. Caller is responsible for nest_service or nest mounting.
-pub fn build_mcp_router(token: String) -> axum::Router {
+/// Build the bearer-auth-protected MCP router. Standalone (does not get nested
+/// into another router) so the auth layer scope is unambiguous.
+fn build_mcp_app(token: String) -> axum::Router {
     let service = StreamableHttpService::new(
         || Ok(PulseMcp::new()),
         Arc::new(LocalSessionManager::default()),
@@ -160,12 +177,36 @@ pub fn build_mcp_router(token: String) -> axum::Router {
 
     // `bearer` is flagged as deprecated upstream for being "too basic to be
     // useful in real applications" - for a localhost tray-app it's exactly
-    // the right surface area. Allow it explicitly so the warning stops
-    // polluting the build.
+    // the right surface area. Allow explicitly to keep the build clean.
     #[allow(deprecated)]
     let auth = ValidateRequestHeaderLayer::bearer(&token);
 
     axum::Router::new()
-        .nest_service("/", service)
+        .nest_service("/mcp", service)
         .layer(auth)
+}
+
+/// Spawn the MCP server on its own port (per McpConfig). Independent listener,
+/// independent runtime task. If the bind fails the permission server is
+/// unaffected.
+pub async fn start_mcp_server(cfg: McpConfig) {
+    let bind_addr = format!("127.0.0.1:{}", cfg.port);
+    let app = build_mcp_app(cfg.token);
+
+    match tokio::net::TcpListener::bind(&bind_addr).await {
+        Ok(listener) => {
+            crate::pulse_log!("mcp", "MCP HTTP server bound {} at /mcp", bind_addr);
+            if let Err(e) = axum::serve(listener, app).await {
+                crate::pulse_log!("mcp", "MCP server exited with error: {}", e);
+            }
+        }
+        Err(e) => {
+            crate::pulse_log!(
+                "mcp",
+                "MCP server failed to bind {}: {}. MCP disabled.",
+                bind_addr,
+                e
+            );
+        }
+    }
 }
