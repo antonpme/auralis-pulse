@@ -1,0 +1,46 @@
+# Auralis Pulse - Engineering Lessons
+
+Retrospective notes on bugs that bit us, so we don't repeat them.
+
+---
+
+## 2026-05-22: Smoke-test the HTTP server before claiming "Phase 1 done"
+
+**What happened.** Shipped v1.4.0-dev with MCP Phase 1: nested a tower-http MCP service under the same axum Router as the permission routes, on port 59428. The whole HTTP listener silently failed to bind. Result: permission popups stopped working for two days before noticed.
+
+**Why it was invisible.** Pulse builds with `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` in release. That strips stdout/stderr. `eprintln!` from the spawned server task went nowhere. The bind failure (or whatever axum panic caused it) was completely silent.
+
+**Root cause hypothesis.** Mounting an MCP `nest_service("/", service)` with `.layer(auth)` into a parent axum Router via `.nest("/mcp", router)` likely panicked at startup or first request. Could not reproduce post-fix because we split the architecture before diagnosing precisely.
+
+**Fix.** Two changes, both worth keeping:
+1. Architectural: split the MCP server onto its own port (59429) with its own listener. Failure domains stay separate.
+2. Operational: file logger (`pulse_log` module) that writes timestamped lines to `%LOCALAPPDATA%\auralis-pulse\pulse.log`. All critical startup paths log here. Silent failures are no longer possible.
+
+**Rule.** When changing anything in the HTTP server, MCP service, or any spawned tokio task at startup: smoke-test by running a debug build and confirming the listener actually binds. `cargo check` does not catch runtime panics in spawned tasks.
+
+---
+
+## 2026-05-22: Autostart preference belongs in our state, not the registry
+
+**What happened.** Ton's "Start with Windows" toggle reset every reinstall. Investigation revealed two compounding causes:
+
+1. `tauri-plugin-autostart::is_enabled()` compares `current_exe()` to the registered registry value. After a dev build registered `target\debug\auralis-pulse.exe`, the prod install at `%LOCALAPPDATA%\Auralis Pulse\auralis-pulse.exe` showed the toggle as off forever.
+2. NSIS uninstaller removes the `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Auralis Pulse` entry as part of cleanup on every upgrade install.
+
+Both modes left the registry out of sync with the user's actual intent, with no way to recover the intent automatically.
+
+**Fix.** Persist the user's preference in `%LOCALAPPDATA%\auralis-pulse\settings.json` (a directory NSIS does not clean), use the registry as the mechanism to fulfill that intent. On every Pulse startup, if `pref == true` but registry is out of sync, re-enable to write the current exe path. `get_autostart` returns the pref, not the registry state.
+
+**Rule.** When using `tauri-plugin-autostart` (or any OS-level setting with similar drift potential), do not treat the OS state as the source of truth. The user's recorded intent is. Sync the OS state to intent on every relevant lifecycle event.
+
+---
+
+## 2026-05-22: Anthropic OAuth usage API field `resets_at` is nullable
+
+**What happened.** Pulse usage panel stuck at "Updated 5d ago" with no UI signal. Background loop quietly retried every 5 minutes for days.
+
+**Root cause.** Anthropic started returning `"resets_at": null` on inactive limits (e.g., `seven_day_sonnet` when Sonnet hasn't been used this week). Pulse's `UsageLimit` struct typed `resets_at: String` (required), so serde parse failed on every fetch since approximately 2026-05-15. The error message "missing field" was not detected as a rate limit, so the loop slept 5 minutes between retries forever.
+
+**Fix.** `resets_at: Option<String>`. Frontend `formatTimeLeft()` already handled null gracefully. Also stopped swallowing errors in the manual refresh button (empty `catch (_) {}` → toast with the error message).
+
+**Rule.** Treat third-party API schemas as eventually-nullable on every optional-looking field. Default to `Option<T>` for any field that doesn't carry semantic meaning when empty. When a fetch loop encounters a non-success result, surface it visibly somewhere the user can find (toast, log file, status badge) so the next time something silently breaks, we know.
