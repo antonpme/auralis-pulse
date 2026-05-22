@@ -1,6 +1,6 @@
 {
   "productName": "Auralis Pulse",
-  "version": "1.4.0-dev2",
+  "version": "1.4.0-dev3",
   "identifier": "com.auralis.pulse",
   "build": {
     "beforeDevCommand": "npm run dev",

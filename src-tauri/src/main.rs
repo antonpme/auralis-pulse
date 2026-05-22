@@ -9,6 +9,7 @@ mod notifications;
 mod pulse_log;
 mod server;
 mod sessions;
+mod settings_store;
 
 use server::{PermissionResponse, SharedState};
 use std::path::PathBuf;
@@ -364,21 +365,48 @@ async fn resize_window(
     Ok(())
 }
 
+/// Returns the user's recorded "Start with Windows" preference (from
+/// settings.json), not the live registry state. The registry can drift
+/// (stale paths after reinstall, NSIS uninstaller cleanup, etc.); the
+/// user's intent recorded by their last toggle is the true value.
+///
+/// Side-effect: if pref is true but the autolaunch plugin reports disabled
+/// (path mismatch, missing entry, etc.), re-enable to sync the registry to
+/// the current exe path. Idempotent.
 #[tauri::command]
 async fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
-    Ok(app.autolaunch().is_enabled().unwrap_or(false))
+    let pref = settings_store::load_settings().autostart_pref;
+    if pref {
+        let mgr = app.autolaunch();
+        if !mgr.is_enabled().unwrap_or(false) {
+            if let Err(e) = mgr.enable() {
+                pulse_log!("autostart", "Failed to re-sync registry to pref=true: {}", e);
+            } else {
+                pulse_log!("autostart", "Re-synced registry from saved pref (current exe)");
+            }
+        }
+    }
+    Ok(pref)
 }
 
 #[tauri::command]
 async fn toggle_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    let pref = settings_store::load_settings().autostart_pref;
+    let new_state = !pref;
+
     let mgr = app.autolaunch();
-    let currently = mgr.is_enabled().unwrap_or(false);
-    if currently {
-        mgr.disable().map_err(|e| e.to_string())?;
-    } else {
+    if new_state {
         mgr.enable().map_err(|e| e.to_string())?;
+    } else {
+        mgr.disable().map_err(|e| e.to_string())?;
     }
-    Ok(!currently)
+
+    let mut settings = settings_store::load_settings();
+    settings.autostart_pref = new_state;
+    settings_store::save_settings(&settings);
+
+    pulse_log!("autostart", "Toggled autostart pref -> {}", new_state);
+    Ok(new_state)
 }
 
 async fn fetch_usage_data() -> Result<serde_json::Value, String> {
@@ -546,6 +574,40 @@ fn main() {
                 let state = server_state.clone();
                 tauri::async_runtime::spawn(async move {
                     server::start_server(state).await;
+                });
+            }
+
+            // Autostart self-heal. If the user's saved preference is "on" but
+            // the registry value drifted (stale dev path, NSIS uninstaller
+            // cleanup, manual edit), re-register the current exe path. Runs
+            // once on every Pulse startup, independent of whether the user
+            // opens the window. Bulletproof against reinstalls.
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let pref = settings_store::load_settings().autostart_pref;
+                    if pref {
+                        let mgr = app_handle.autolaunch();
+                        let currently = mgr.is_enabled().unwrap_or(false);
+                        if !currently {
+                            match mgr.enable() {
+                                Ok(_) => pulse_log!(
+                                    "autostart",
+                                    "Self-heal on startup: re-registered current exe (pref=true, registry was out of sync)"
+                                ),
+                                Err(e) => pulse_log!(
+                                    "autostart",
+                                    "Self-heal failed: {}",
+                                    e
+                                ),
+                            }
+                        } else {
+                            pulse_log!(
+                                "autostart",
+                                "Self-heal check: pref=true, registry already in sync"
+                            );
+                        }
+                    }
                 });
             }
 
