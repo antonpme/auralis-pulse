@@ -1249,6 +1249,26 @@ function fireSystemNotification(session, ctx, tierIdx, preset) {
   const title = `${session.name} at ${tierName}`;
   const body = `${formatTokenDisplay(ctx.used_tokens || 0)} / ${formatTokenDisplay(preset.limitTokens)} (${pct}%)`;
   invoke("fire_threshold_notification", { title, body }).catch(() => {});
+
+  // v1.4.4 Phase 4: also broadcast as MCP notification so connected MCP
+  // clients react instantly (no polling). Carries full preset context the
+  // backend doesn't know about (the Rust-side notifications.rs uses hardcoded
+  // 300K/350K, but the user-facing threshold is per-preset).
+  invoke("mcp_broadcast", {
+    kind: "threshold-crossed",
+    payload: {
+      session_id: session.session_id,
+      pid: parseInt(session.pid, 10),
+      name: session.name,
+      tier: tierName,
+      tier_index: tierIdx,
+      used_tokens: ctx.used_tokens || 0,
+      limit_tokens: preset.limitTokens,
+      percent: pct,
+      preset_id: preset.id,
+      preset_name: preset.name,
+    },
+  }).catch(() => {});
 }
 
 function dispatchCommandToSession(commandId, pid, sessionName) {

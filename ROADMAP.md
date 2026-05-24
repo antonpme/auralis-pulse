@@ -178,7 +178,23 @@
 - [x] DevTools enabled in release builds (F12 or Ctrl+Shift+I)
 - [x] Light theme dropdown options correctly colored (color-scheme CSS property)
 
-## v1.4.3 (current)
+## v1.4.4 (current)
+
+### MCP Server Integration: Phase 4 server-pushed notifications
+
+Pulse now broadcasts state changes to every connected MCP client over the existing Streamable HTTP connection. No polling. Wraps payloads in standard `notifications/message` (logging) frames so any MCP-conformant client surface receives them; structured `data` carries `{ kind, payload }` for easy dispatch.
+
+- [x] **`threshold-crossed`** — fired by the frontend hysteresis loop when a session crosses a per-preset threshold. Payload carries `session_id`, `pid`, `name`, `tier` (`warning` | `pre-critical` | `critical`), `tier_index`, `used_tokens`, `limit_tokens`, `percent`, `preset_id`, `preset_name`. Goes through a new `mcp_broadcast(kind, payload)` Tauri command so the frontend can dispatch any MCP event without new Rust surface.
+- [x] **`session-added`** / **`session-removed`** — diffed every 30 seconds in the backend session refresh loop. `session-added` payload carries `session_id`, `pid`, `name`, `cwd`, `started_at`. `session-removed` carries just `session_id`. First tick after Pulse start emits `session-added` for every currently alive session so clients can populate without an explicit `pulse_list_sessions` call.
+- [x] **`usage-updated`** — fired after every successful Anthropic OAuth fetch (5-minute loop, or any explicit `pulse_refresh_usage` call). Slim payload: `fetched_at`, `tier`, `five_hour_pct`, `weekly_pct`, `sonnet_pct`. Full usage shape stays available via `pulse_get_usage`.
+
+### Plumbing
+- [x] `PulseMcpState` extended with `peers: Arc<Mutex<Vec<Peer<RoleServer>>>>`. Same `Arc` is held by `McpPeersState` (Tauri-managed) so backend loops and the frontend `mcp_broadcast` command see the canonical peer list.
+- [x] `ServerHandler::on_initialized` override captures `context.peer.clone()` into the peer list when a client completes its handshake. rmcp doesn't expose a disconnect hook, so `mcp::broadcast_pulse_event` drains transport-closed peers on every call via `Peer::is_transport_closed()`.
+- [x] `ServerCapabilities` now advertises `logging` alongside `tools` so capability-aware clients know to subscribe.
+- [x] Pub helper `mcp::broadcast_pulse_event(peers, kind, payload)`: snapshot peers under short lock, send `notify_logging_message` per peer without holding the lock, drop closed peers on completion. No-op when no clients are connected (early-exit).
+
+## v1.4.3
 
 ### MCP Server Integration: Phase 5 Settings tab
 - [x] **New "MCP" tab inside Settings** (between Commands and About). Connection group shows the listening address (`127.0.0.1:<port>`) and full URL. Token group shows a masked token (`first6...last4`) with Reveal/Hide and Copy buttons. Quick Start group shows the full `claude mcp add --transport http --scope user auralis-pulse <url> --header "Authorization: Bearer <token>"` command in a monospace block with a one-click Copy. Exposed Tools group lists all 10 tool names so a user immediately sees the surface.
@@ -240,7 +256,7 @@ Pulse can expose session monitoring, command sending, and preset management to M
 - [x] **Phase 2: Read-only tools.** pulse_list_sessions, pulse_get_session, pulse_get_usage, pulse_list_presets, pulse_list_commands. *(shipped in v1.4.1)*
 - [x] **Phase 3: Write tools.** pulse_send_command, pulse_assign_preset, pulse_refresh_usage, pulse_clear_usage_cache. *(shipped in v1.4.2)*
 - [x] **Phase 5: Settings UX.** New "MCP" tab. Shows port, URL, masked token with Reveal/Hide, Copy token, Copy full `claude mcp add` command, exposed-tools summary. *(shipped in v1.4.3, swapped ahead of Phase 4 since it's pure UI work with high user value)*
-- [ ] **Phase 4: Notifications.** threshold-crossed, session-added/removed, usage-updated events as MCP notifications over SSE. *(v1.4.4, needs research-spike on rmcp's `Peer<RoleServer>` broadcast pattern)*
+- [x] **Phase 4: Notifications.** Four event kinds broadcast over the MCP `notifications/message` (logging) channel with structured `{ kind, payload }` data: `threshold-crossed` (per-preset, frontend-fired), `session-added`/`session-removed` (backend 30s diff), `usage-updated` (after every Anthropic fetch). `Peer<RoleServer>` captured in `ServerHandler::on_initialized`, transport-closed peers dropped on every broadcast. *(shipped in v1.4.4)*
 - [ ] **Phase 6: Docs.** README MCP section with examples per client (Claude Code, Claude Desktop via mcp-remote bridge, Cursor, Continue, Zed). *(v1.4.5)*
 
 ## v1.5.0

@@ -216,6 +216,16 @@ struct AutoHideState {
     enabled: Mutex<bool>,
 }
 
+/// Connected MCP clients. Populated by `PulseMcp::on_initialized` (mcp.rs).
+/// Same backing `Arc` lives inside `PulseMcpState.peers` so the MCP layer and
+/// the broadcast emitters (sessions loop, usage loop, `mcp_broadcast` Tauri
+/// command) all see the same set of peers. `mcp::broadcast_pulse_event`
+/// drains transport-closed peers on every call (rmcp doesn't expose a
+/// disconnect hook).
+struct McpPeersState {
+    peers: Arc<Mutex<Vec<rmcp::service::Peer<rmcp::service::RoleServer>>>>,
+}
+
 // Session commands
 #[tauri::command]
 async fn list_sessions() -> Result<Vec<sessions::SessionInfo>, String> {
@@ -260,6 +270,23 @@ fn fire_threshold_notification(
         .body(&body)
         .show()
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Broadcast a Pulse event to every connected MCP client as a
+/// `notifications/message` (logging) notification with structured data
+/// `{ kind, payload }`. No-op when no clients are connected. Used by the
+/// frontend for events it knows about first (e.g. per-preset threshold-crossed
+/// fired by the JS hysteresis loop). Backend loops (session diff, usage
+/// refresh) call `mcp::broadcast_pulse_event` directly without going through
+/// this command.
+#[tauri::command]
+async fn mcp_broadcast(
+    kind: String,
+    payload: serde_json::Value,
+    state: tauri::State<'_, McpPeersState>,
+) -> Result<(), String> {
+    mcp::broadcast_pulse_event(&state.peers, &kind, payload).await;
     Ok(())
 }
 
@@ -554,16 +581,22 @@ fn main() {
     let server_state_tauri = server_state.clone();
 
     // Free-standing Arcs so MCP (`mcp::PulseMcpState`) and Tauri managed state
-    // (`UsageState`, `UserDataState`) share the SAME backing mutex. Without
-    // this, MCP tools and the frontend would see different snapshots.
+    // (`UsageState`, `UserDataState`, `McpPeersState`) share the SAME backing
+    // mutex. Without this, MCP tools and the frontend would see different
+    // snapshots, and broadcast emitters wouldn't reach the actual peer list.
     let usage_arc: Arc<Mutex<Option<serde_json::Value>>> =
         Arc::new(Mutex::new(load_usage_cache()));
     let user_data_arc: Arc<Mutex<serde_json::Value>> =
         Arc::new(Mutex::new(user_data_store::load_user_data()));
+    let mcp_peers_arc: Arc<Mutex<Vec<rmcp::service::Peer<rmcp::service::RoleServer>>>> =
+        Arc::new(Mutex::new(Vec::new()));
 
     // Clones moved into the setup() closure for the MCP spawn task.
     let mcp_usage_arc = usage_arc.clone();
     let mcp_user_data_arc = user_data_arc.clone();
+    let mcp_peers_for_state = mcp_peers_arc.clone();
+    let mcp_peers_for_sessions_loop = mcp_peers_arc.clone();
+    let mcp_peers_for_usage_loop = mcp_peers_arc.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
@@ -584,6 +617,9 @@ fn main() {
         .manage(AutoHideState {
             enabled: Mutex::new(true),
         })
+        .manage(McpPeersState {
+            peers: mcp_peers_arc.clone(),
+        })
         .invoke_handler(tauri::generate_handler![
             list_sessions,
             get_context,
@@ -599,6 +635,7 @@ fn main() {
             refresh_usage,
             clear_usage_cache,
             get_mcp_config,
+            mcp_broadcast,
             sync_user_data,
             set_tray_metric,
             get_version,
@@ -675,6 +712,7 @@ fn main() {
                         usage: mcp_usage_arc,
                         user_data: mcp_user_data_arc,
                         app_handle: app_handle_for_mcp,
+                        peers: mcp_peers_for_state,
                     });
                     match mcp::McpConfig::load_or_generate() {
                         Ok(cfg) => {
@@ -809,8 +847,17 @@ fn main() {
             // Sessions refresh loop: every 30s (local, free)
             let app_handle = app.handle().clone();
             let threshold_state = notifications::ThresholdState::new();
+            let mcp_peers_for_sessions = mcp_peers_for_sessions_loop;
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                // Track which sessions were alive on the previous tick so we
+                // can emit session-added / session-removed MCP notifications.
+                // Initialised empty so every session present on the very first
+                // tick after Pulse start gets a session-added; that's the
+                // intended semantic (clients can see the current set without
+                // an explicit pulse_list_sessions call).
+                let mut previous_alive: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
                 loop {
                     let sessions = sessions::list_sessions();
                     let session_count = sessions.len();
@@ -832,6 +879,46 @@ fn main() {
                             }
                         }
                         notifications::cleanup_stale_sessions(&threshold_state, &alive_ids).await;
+                    }
+
+                    // Diff alive set against previous tick and broadcast MCP
+                    // notifications for added/removed sessions. Cheap when no
+                    // MCP clients are connected (broadcast_pulse_event early-
+                    // exits on empty peer list).
+                    {
+                        let current: std::collections::HashSet<String> = sessions
+                            .iter()
+                            .map(|s| s.session_id.clone())
+                            .collect();
+                        let by_id: std::collections::HashMap<String, &sessions::SessionInfo> =
+                            sessions.iter().map(|s| (s.session_id.clone(), s)).collect();
+                        for id in current.difference(&previous_alive) {
+                            if let Some(s) = by_id.get(id) {
+                                let payload = serde_json::json!({
+                                    "session_id": s.session_id,
+                                    "pid": s.pid,
+                                    "name": s.name,
+                                    "cwd": s.cwd,
+                                    "started_at": s.started_at,
+                                });
+                                mcp::broadcast_pulse_event(
+                                    &mcp_peers_for_sessions,
+                                    "session-added",
+                                    payload,
+                                )
+                                .await;
+                            }
+                        }
+                        for id in previous_alive.difference(&current) {
+                            let payload = serde_json::json!({ "session_id": id });
+                            mcp::broadcast_pulse_event(
+                                &mcp_peers_for_sessions,
+                                "session-removed",
+                                payload,
+                            )
+                            .await;
+                        }
+                        previous_alive = current;
                     }
 
                     // Update tray tooltip with session count
@@ -913,6 +1000,7 @@ fn main() {
 
             // Usage refresh loop: 5min normal, exponential backoff on rate limit (max 60min)
             let app_handle2 = app.handle().clone();
+            let mcp_peers_for_usage = mcp_peers_for_usage_loop;
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 let mut fail_count: u32 = 0;
@@ -922,11 +1010,35 @@ fn main() {
                             fail_count = 0;
                             save_usage_cache(&data);
                             let state: tauri::State<UsageState> = app_handle2.state();
-                            *state.data.lock().await = Some(data);
+                            *state.data.lock().await = Some(data.clone());
 
                             if let Some(window) = app_handle2.get_webview_window("pulse") {
                                 let _ = window.emit("usage-updated", ());
                             }
+
+                            // Broadcast a slim payload to connected MCP clients
+                            // so they react instantly. Full usage shape stays
+                            // available via the pulse_get_usage tool.
+                            let usage = data.get("usage");
+                            let slim = serde_json::json!({
+                                "fetched_at": data.get("fetched_at"),
+                                "tier": data.get("tier"),
+                                "five_hour_pct": usage
+                                    .and_then(|u| u.get("five_hour"))
+                                    .and_then(|s| s.get("utilization")),
+                                "weekly_pct": usage
+                                    .and_then(|u| u.get("seven_day"))
+                                    .and_then(|s| s.get("utilization")),
+                                "sonnet_pct": usage
+                                    .and_then(|u| u.get("seven_day_sonnet"))
+                                    .and_then(|s| s.get("utilization")),
+                            });
+                            mcp::broadcast_pulse_event(
+                                &mcp_peers_for_usage,
+                                "usage-updated",
+                                slim,
+                            )
+                            .await;
 
                             tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
                         }

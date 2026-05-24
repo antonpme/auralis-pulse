@@ -35,7 +35,11 @@ use rmcp::{
         router::tool::ToolRouter,
         wrapper::Parameters,
     },
-    model::{ErrorData, Implementation, ServerCapabilities, ServerInfo},
+    model::{
+        ErrorData, Implementation, LoggingLevel, LoggingMessageNotificationParam,
+        ServerCapabilities, ServerInfo,
+    },
+    service::{NotificationContext, Peer, RoleServer},
     tool, tool_handler, tool_router,
     transport::streamable_http_server::{
         session::local::LocalSessionManager, tower::StreamableHttpService,
@@ -138,6 +142,12 @@ pub struct PulseMcpState {
     /// Rust). Without this, MCP-side writes to user-managed state would
     /// silently lose the next time the frontend ran `sync_user_data`.
     pub app_handle: AppHandle,
+    /// Connected MCP clients. Populated by `ServerHandler::on_initialized` when
+    /// a client completes its handshake. Drained on-demand by
+    /// `broadcast_pulse_event` (removes transport-closed peers). Same `Arc` is
+    /// also held by `McpPeersState` in `main.rs` so the rest of the app can
+    /// push notifications without going through PulseMcp.
+    pub peers: Arc<Mutex<Vec<Peer<RoleServer>>>>,
 }
 
 // ============================================================================
@@ -388,6 +398,18 @@ impl PulseMcp {
         // Notify the UI so the right panel re-renders without waiting for the
         // next 30s tick.
         let _ = self.state.app_handle.emit("usage-updated", ());
+        // Broadcast to MCP clients with a slim payload (same shape as the
+        // periodic 5-min loop emits). Callers that hit this tool then poll
+        // pulse_get_usage to read the full snapshot.
+        let usage = fresh.get("usage");
+        let slim = json!({
+            "fetched_at": fresh.get("fetched_at"),
+            "tier": fresh.get("tier"),
+            "five_hour_pct": usage.and_then(|u| u.get("five_hour")).and_then(|s| s.get("utilization")),
+            "weekly_pct": usage.and_then(|u| u.get("seven_day")).and_then(|s| s.get("utilization")),
+            "sonnet_pct": usage.and_then(|u| u.get("seven_day_sonnet")).and_then(|s| s.get("utilization")),
+        });
+        broadcast_pulse_event(&self.state.peers, "usage-updated", slim).await;
         Ok(Self::json_string(&fresh))
     }
 
@@ -423,19 +445,141 @@ impl ServerHandler for PulseMcp {
         )
         .with_website_url("https://github.com/antonpme/auralis-pulse");
 
-        let capabilities = ServerCapabilities::builder().enable_tools().build();
+        // Advertise both `tools` and `logging` capabilities. `logging` is the
+        // surface we use to broadcast Pulse events (threshold-crossed,
+        // session-added/removed, usage-updated) as MCP notifications. Clients
+        // that don't subscribe to logging just ignore them.
+        let capabilities = ServerCapabilities::builder()
+            .enable_tools()
+            .enable_logging()
+            .build();
 
         let mut info = ServerInfo::new(capabilities);
         info = info.with_server_info(implementation);
         info.instructions = Some(
             "Auralis Pulse MCP server. Exposes Claude Code session monitoring, \
-             per-PID command sending, and preset management to MCP clients. \
-             Phase 2: pulse_ping + 5 read-only tools (list_sessions, get_session, \
-             get_usage, list_presets, list_commands). Write tools land in v1.4.2."
+             per-PID command sending, and preset management. v1.4.3 surface: \
+             pulse_ping + 5 read tools (list_sessions, get_session, get_usage, \
+             list_presets, list_commands) + 4 write tools (send_command, \
+             assign_preset, refresh_usage, clear_usage_cache). v1.4.4 adds \
+             server-pushed notifications over MCP logging channel: \
+             threshold-crossed, session-added, session-removed, usage-updated. \
+             Each notification's `data` carries `{ kind, payload }` so clients \
+             can dispatch by kind."
                 .to_string(),
         );
         info
     }
+
+    /// Lifecycle hook: fires after a client completes the MCP `initialize`
+    /// handshake. We capture the `Peer` (cloneable handle to the client's
+    /// outbound stream) into `state.peers` so the rest of the app can send
+    /// notifications to all connected clients via `broadcast_pulse_event`.
+    ///
+    /// rmcp does NOT give us a corresponding `on_disconnected` hook. Instead
+    /// we rely on `Peer::is_transport_closed()` and best-effort cleanup
+    /// inside `broadcast_pulse_event` (drop closed peers on every broadcast).
+    fn on_initialized(
+        &self,
+        context: NotificationContext<RoleServer>,
+    ) -> impl std::future::Future<Output = ()> + Send + '_ {
+        let peer = context.peer.clone();
+        let peers_arc = self.state.peers.clone();
+        async move {
+            let mut peers = peers_arc.lock().await;
+            peers.push(peer);
+            let n = peers.len();
+            drop(peers);
+            crate::pulse_log!("mcp", "client connected via MCP, total peers={}", n);
+        }
+    }
+}
+
+// ============================================================================
+// Broadcast helper: push a Pulse event to every connected MCP client.
+//
+// Used by `main.rs` event sources (session diff, usage refresh) and by the
+// `mcp_broadcast` Tauri command (which the frontend calls when its per-preset
+// threshold logic fires). Wraps the payload in a `LoggingMessageNotification`
+// because that's the closest standard MCP surface for server-pushed events;
+// the `data` field is a free-form JSON object so we can attach arbitrary
+// `{ kind, payload }` shapes.
+//
+// Hygiene: drops transport-closed peers from the canonical list on every
+// call. rmcp doesn't expose an `on_disconnect` hook, so this is the only
+// place stale peers get cleaned up.
+// ============================================================================
+
+/// Broadcast a Pulse event to every connected MCP client. No-op if no clients
+/// are connected. Errors per peer are logged but do not propagate; a failing
+/// peer is dropped from the canonical list on the next call.
+pub async fn broadcast_pulse_event(
+    peers_arc: &Arc<Mutex<Vec<Peer<RoleServer>>>>,
+    kind: &str,
+    payload: serde_json::Value,
+) {
+    // Snapshot under short lock so we don't hold it across .await on
+    // notify_logging_message (which can block on the SSE socket).
+    let (snapshot, total_peers, alive_peers): (Vec<Peer<RoleServer>>, usize, usize) = {
+        let guard = peers_arc.lock().await;
+        let total = guard.len();
+        let alive: Vec<Peer<RoleServer>> =
+            guard.iter().filter(|p| !p.is_transport_closed()).cloned().collect();
+        let alive_count = alive.len();
+        (alive, total, alive_count)
+    };
+    if snapshot.is_empty() {
+        if total_peers > 0 {
+            crate::pulse_log!(
+                "mcp",
+                "broadcast {}: skipping, all {} peers report transport closed",
+                kind, total_peers
+            );
+        }
+        return;
+    }
+
+    crate::pulse_log!(
+        "mcp",
+        "broadcast {}: sending to {} alive peers (of {} total)",
+        kind, alive_peers, total_peers
+    );
+
+    let data = json!({
+        "kind": kind,
+        "payload": payload,
+    });
+
+    let mut success = 0usize;
+    let mut failure = 0usize;
+    for peer in &snapshot {
+        if peer.is_transport_closed() {
+            continue;
+        }
+        let param = LoggingMessageNotificationParam {
+            level: LoggingLevel::Info,
+            logger: Some("auralis-pulse".to_string()),
+            data: data.clone(),
+        };
+        match peer.notify_logging_message(param).await {
+            Ok(_) => success += 1,
+            Err(e) => {
+                failure += 1;
+                crate::pulse_log!("mcp", "broadcast notify failed (peer will be dropped): {:?}", e);
+            }
+        }
+    }
+    crate::pulse_log!(
+        "mcp",
+        "broadcast {} done: success={} failure={}",
+        kind, success, failure
+    );
+
+    // Hygiene: drop peers whose transport has closed since the snapshot.
+    // Best-effort; doesn't catch peers that closed mid-broadcast but the next
+    // call will.
+    let mut guard = peers_arc.lock().await;
+    guard.retain(|p| !p.is_transport_closed());
 }
 
 // ============================================================================

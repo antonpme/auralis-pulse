@@ -87,3 +87,17 @@ Required `PulseMcpState` to hold an `AppHandle` (added via Phase 3 refactor). No
 **Trade-off.** Eventually consistent. The MCP tool's success response means "dispatched", not "applied". A client calling `pulse_list_presets` immediately after `pulse_assign_preset` might briefly see the old value (within ~100ms). Acceptable for the use case.
 
 **Rule.** If two layers own the same data and only one direction is synced (JS → Rust here), don't let the other layer write directly. Route writes through the syncing layer so reconciliation is automatic. The `AppHandle` injection pattern is the right shape: MCP tools nudge the UI, the UI is the source of truth, Rust is the read mirror.
+
+---
+
+## 2026-05-24: MCP write tools must broadcast notifications themselves, not rely on the periodic loop (v1.4.4 Phase 4)
+
+**What happened.** Wired Phase 4 server-pushed notifications. Added a 5-minute loop broadcast for `usage-updated` after every successful Anthropic OAuth fetch. Wrote a smoke test that triggers `pulse_refresh_usage` (the MCP tool) and listens on the standalone GET /mcp SSE stream for the `usage-updated` notification. Tool returned fresh data; smoke test got nothing. `pulse.log` showed `client connected, total peers=1` but no `broadcast` lines.
+
+**Root cause.** The MCP tool `pulse_refresh_usage` mutates the cached usage state and emits a Tauri event for the UI, but it never called `broadcast_pulse_event`. The 5-minute loop does the broadcast, but the smoke test ran within seconds of process start, long before the loop had completed its next iteration. Result: tool-triggered state mutation, no notification, smoke test fail.
+
+**Fix.** Added `broadcast_pulse_event(&self.state.peers, "usage-updated", slim).await` inside the `pulse_refresh_usage` tool body. Same slim payload shape as the 5-min loop emits. Smoke test now passes within ~1 second of triggering the tool.
+
+**Rule.** When the same state is mutated by both a periodic loop AND an on-demand tool/command, any notification side-effect must fire from BOTH paths, not just the loop. Otherwise tool-initiated state changes look invisible to subscribers until the next loop tick. This is the same shape as cache-invalidation: the producer always knows when state changed; the schedule never does.
+
+**Bonus.** Diagnostic logging (`broadcast X: sending to N alive peers`, `broadcast X done: success=Y failure=Z`) immediately surfaced the absence of broadcast attempts. Kept it on. At 6 lines per peer per hour during normal operation, the visibility-for-bytes trade is worth it.

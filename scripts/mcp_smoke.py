@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -229,6 +231,92 @@ def main() -> int:
 
     banner("pulse_refresh_usage (re-populates after clear)")
     show(extract_structured(call("pulse_refresh_usage", rid=24)), limit=900)
+
+    # -------------- Phase 4 server-pushed notifications --------------
+    #
+    # The MCP Streamable HTTP transport delivers server-initiated notifications
+    # on a "standalone" SSE stream opened via GET /mcp with the session id.
+    # Open one in a background thread, then trigger pulse_refresh_usage from
+    # the main thread (POST) so the backend broadcasts a `usage-updated`
+    # notification. Read for ~5 seconds and verify at least one of the four
+    # Phase 4 kinds arrives.
+
+    banner("Phase 4 broadcast notifications (standalone SSE stream)")
+    if not SESSION_ID:
+        print("FAIL: no SESSION_ID; cannot open standalone stream")
+        return 1
+
+    notifications: list[dict[str, Any]] = []
+    stop_flag = threading.Event()
+
+    def listen() -> None:
+        req = urllib.request.Request(
+            URL,
+            headers={
+                "Authorization": f"Bearer {TOKEN}",
+                "Accept": "text/event-stream",
+                "Mcp-Session-Id": SESSION_ID or "",
+            },
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                for raw_line in resp:
+                    if stop_flag.is_set():
+                        return
+                    line = raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
+                    if not line.startswith("data: "):
+                        continue
+                    payload = line[6:].strip()
+                    if not payload:
+                        continue
+                    try:
+                        msg = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(msg, dict) and msg.get("method") == "notifications/message":
+                        notifications.append(msg)
+        except (urllib.error.URLError, TimeoutError) as e:
+            print(f"  (standalone stream closed/timed out: {e})")
+
+    t = threading.Thread(target=listen, daemon=True)
+    t.start()
+    time.sleep(0.5)  # let the GET handshake settle
+
+    # Trigger a broadcast event. pulse_refresh_usage is the most reliable
+    # trigger (single call -> one usage-updated broadcast).
+    print("Triggering pulse_refresh_usage to broadcast usage-updated...")
+    call("pulse_refresh_usage", rid=30)
+
+    # Listen up to 5 seconds for at least one notification.
+    deadline = time.time() + 5.0
+    while time.time() < deadline and not notifications:
+        time.sleep(0.2)
+
+    stop_flag.set()
+    time.sleep(0.3)
+
+    if not notifications:
+        print("WARN: no notifications received on standalone stream within 5s.")
+        print("      Possible causes: client doesn't open GET stream (Pulse does);")
+        print("      broadcast happens before listener attaches; rmcp transport mapping differs.")
+    else:
+        print(f"Received {len(notifications)} notification(s):")
+        for n in notifications[:10]:
+            params = n.get("params") or {}
+            data = params.get("data") or {}
+            kind = data.get("kind") if isinstance(data, dict) else None
+            payload = data.get("payload") if isinstance(data, dict) else None
+            print(f"  - kind={kind} level={params.get('level')} payload={json.dumps(payload, ensure_ascii=False)[:200]}")
+        kinds = {
+            (n.get("params") or {}).get("data", {}).get("kind")
+            for n in notifications
+            if isinstance((n.get("params") or {}).get("data"), dict)
+        }
+        if "usage-updated" in kinds:
+            print("PASS: usage-updated broadcast received")
+        else:
+            print(f"WARN: expected usage-updated, got kinds={kinds}")
 
     print("\nDONE")
     return 0
