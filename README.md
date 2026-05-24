@@ -274,10 +274,10 @@ Pulse queries `DWMWA_EXTENDED_FRAME_BOUNDS` to get the visual rect, computes the
 - **v1.4** ongoing through v1.4.5:
   - [x] **v1.4.0** Autostart preference persistence + diagnostic file logger (`pulse.log`) + MCP server foundation (Phase 1)
   - [x] **v1.4.1** MCP Phase 2: five read tools (`pulse_list_sessions`, `pulse_get_session`, `pulse_get_usage`, `pulse_list_presets`, `pulse_list_commands`) + JS↔Rust state mirror
-  - [ ] **v1.4.2** MCP Phase 3: write tools (`pulse_send_command`, `pulse_assign_preset`, `pulse_refresh_usage`, `pulse_clear_usage_cache`)
-  - [ ] **v1.4.3** MCP Phase 4: SSE notifications (threshold-crossed, session add/remove, usage-updated)
-  - [ ] **v1.4.4** MCP Phase 5: new MCP tab inside Settings — shows port, masked token, listening status; one-click "Copy `claude mcp add` command" so no one has to dig through `mcp.json` to wire a client
-  - [ ] **v1.4.5** MCP Phase 6: per-client setup docs (Cursor, Continue, Zed, Claude Desktop)
+  - [ ] **v1.4.2** MCP Phase 3: write tools — `pulse_send_command(pid, text)` injects a slash command or natural-language message into a specific Claude Code session, `pulse_assign_preset(session_id, preset_id)` swaps a session's alert ceiling, `pulse_refresh_usage` forces an Anthropic OAuth fetch, `pulse_clear_usage_cache` nukes the disk cache. Closes the loop: agents can now act on Pulse, not just read from it.
+  - [ ] **v1.4.3** MCP Phase 4: SSE notifications — server-pushed events over the existing MCP stream so clients react instantly without polling. Threshold-crossed (session hit a configured tier), session add/remove (new tab opened or ghost dismissed), usage-updated (new Anthropic snapshot fetched).
+  - [ ] **v1.4.4** MCP Phase 5: new MCP tab inside Settings — shows port, masked token, listening status; one-click "Copy `claude mcp add` command" so no one has to dig through `mcp.json` to wire a client.
+  - [ ] **v1.4.5** MCP Phase 6: per-client setup docs — copy-paste config snippets for Cursor (`.cursor/mcp.json`), Continue (`config.json`), Zed (`settings.json`), Claude Desktop (via `mcp-remote` bridge), plus a verification section showing what `pulse_ping` should return for each.
 - [ ] **v1.5** Cross-platform: macOS (.dmg) via iTerm2 Python API, Linux (.AppImage / .deb) with tmux send-keys, GitHub Actions CI matrix, optional auto-update
 - [ ] **Future** Configurable keyboard shortcuts, session activity timeline, command chains (Crystallize, then wait, then Compact), Discord callback integration, Tailscale plus PWA for remote mobile access, plugin system
 
