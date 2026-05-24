@@ -54,6 +54,7 @@ Most usage tools tell you what already happened. Pulse acts before it happens.
 - **Custom commands library.** Slash commands or multi-line natural language, anything your workflow needs.
 - **Alert presets per session.** Worker / Architect / Soul roles each have their own ceilings.
 - **Live everything.** Tokens, model, status, 5-hour and weekly burn, Sonnet quota.
+- **MCP server inside.** Expose live session state, usage, presets, and command library to any MCP-aware agent. Other agents can ask "where am I in my context?" and get a real answer.
 
 <a id="vs-the-rest"></a>
 
@@ -61,18 +62,18 @@ Most usage tools tell you what already happened. Pulse acts before it happens.
 
 The Claude Code tooling space is mostly read-only telemetry. Pulse is the only one that closes the loop and **actually sends commands when thresholds hit**.
 
-| Tool | Form | Platforms | Live | Per-session | Auto-fire | Custom send |
-|---|---|---|:-:|:-:|:-:|:-:|
-| **Auralis Pulse** | Tray (Tauri 2) | Windows | ✅ | ✅ | ✅ | ✅ |
-| [ccusage](https://github.com/ryoppippi/ccusage) | CLI | All | ❌ snapshot | ✅ report | ❌ | ❌ |
-| [Claude-Code-Usage-Monitor](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor) | TUI | All | ✅ | ✅ 5h | ❌ | ❌ |
-| [claudia](https://github.com/getAsterisk/claudia) | GUI desktop | All | ✅ analytics | ✅ history | ❌ | ❌ |
-| [ClaudeBar](https://github.com/tddworks/ClaudeBar) | Menu bar | macOS | ✅ | partial | ❌ | ❌ |
-| Built-in `/cost`, `/context` | Slash | In-session | on demand | current only | n/a | n/a |
+| Tool | Form | Platforms | Live | Per-session | Auto-fire | Send | MCP |
+|---|---|---|:-:|:-:|:-:|:-:|:-:|
+| **Auralis Pulse** | Tray (Tauri 2) | Windows | ✅ | ✅ | ✅ | ✅ | ✅ |
+| [ccusage](https://github.com/ryoppippi/ccusage) | CLI | All | ❌ snapshot | ✅ report | ❌ | ❌ | ❌ |
+| [Claude-Code-Usage-Monitor](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor) | TUI | All | ✅ | ✅ 5h | ❌ | ❌ | ❌ |
+| [claudia](https://github.com/getAsterisk/claudia) | GUI desktop | All | ✅ analytics | ✅ history | ❌ | ❌ | ❌ |
+| [ClaudeBar](https://github.com/tddworks/ClaudeBar) | Menu bar | macOS | ✅ | partial | ❌ | ❌ | ❌ |
+| Built-in `/cost`, `/context` | Slash | In-session | on demand | current only | n/a | n/a | ❌ |
 
-**Where Pulse loses, honestly.** Windows-only today (mac + Linux are on the v1.4 roadmap). No retrospective analytics or charts (use ccusage for that). Smaller star count: we just shipped.
+**Where Pulse loses, honestly.** Windows-only today (mac + Linux are on the v1.5 roadmap). No retrospective analytics or charts (use ccusage for that). Smaller star count: we just shipped.
 
-**Where Pulse wins.** Auto-fire commands at thresholds. Per-PID precision. Custom multi-line message injection. Tray-native on Windows, the gap nobody else fills.
+**Where Pulse wins.** Auto-fire commands at thresholds. Per-PID precision. Custom multi-line message injection. An MCP server other agents can read from. Tray-native on Windows, the gap nobody else fills.
 
 <a id="install"></a>
 
@@ -200,6 +201,30 @@ Bottom-right of the work area. DWM-aware: handles the invisible 5-8 px shadow ma
 
 Per-session opt-in checkbox. Even if a preset fires `/compact`, it's blocked unless you explicitly allowed it for that session. Defense in depth for long-running agents you don't want auto-compacting on you.
 
+### MCP server inside
+
+Pulse runs a Streamable HTTP MCP server on `127.0.0.1:59429`. Any MCP-aware agent (Claude Code, Claude Desktop via `mcp-remote`, Cursor, Continue, Zed) can read live Pulse state and, in upcoming patches, drive it.
+
+**Wire it into Claude Code in one command.** The token is generated on first launch and lives at `%LOCALAPPDATA%\auralis-pulse\mcp.json`:
+
+```bash
+claude mcp add --transport http --scope user auralis-pulse http://127.0.0.1:59429/mcp \
+  --header "Authorization: Bearer <token-from-mcp.json>"
+```
+
+**Tools available today (v1.4.1):**
+
+| Tool | Returns |
+|---|---|
+| `pulse_ping` | `pong` plus Pulse version. Health check. |
+| `pulse_list_sessions` | Every alive Claude Code session: PID, session_id, cwd, name, started_at, duration_mins, last_activity_mins, status (active/idle/ghost). |
+| `pulse_get_session(session_id)` | Full details for one session. Errors if no alive session matches. |
+| `pulse_get_usage` | Current Anthropic OAuth usage: 5h window, weekly, Sonnet quota, extra usage credits. |
+| `pulse_list_presets` | All alert presets, built-ins plus your custom ones, with thresholds and assigned commands. |
+| `pulse_list_commands` | The custom command library. Slash commands and natural-language messages alike. |
+
+Bearer-token auth, localhost-only by design. Write tools (send command to PID, swap a session's preset, force a usage refresh), threshold-crossed notifications over SSE, and a dedicated Settings tab for the MCP config land in v1.4.2 – v1.4.4. Per-client setup examples (Cursor, Continue, Zed, Claude Desktop) land in v1.4.5.
+
 <a id="how-it-works"></a>
 
 ## How it works
@@ -246,9 +271,9 @@ Pulse queries `DWMWA_EXTENDED_FRAME_BOUNDS` to get the visual rect, computes the
 ## Roadmap
 
 - [x] **v1.3** Custom commands, alert presets, per-PID delivery, auto-compact safety, pin sessions, DWM-aware window pinning, preset chip, modal picker, DOM split for overlay isolation
-- [ ] **v1.4** Cross-platform: macOS (.dmg) via iTerm2 Python API, Linux (.AppImage / .deb) with tmux send-keys, GitHub Actions CI matrix, optional auto-update
-- [ ] **v1.5** Configurable keyboard shortcuts, session activity timeline, command chains (Crystallize, then wait, then Compact)
-- [ ] **Future** Discord callback integration, Tailscale plus PWA for remote mobile access, plugin system
+- [ ] **v1.4** MCP server integration. Phase 1 (foundation) + Phase 2 (5 read tools) shipped in v1.4.0 / v1.4.1; write tools, SSE notifications, Settings UX, and per-client docs land in v1.4.2 – v1.4.5
+- [ ] **v1.5** Cross-platform: macOS (.dmg) via iTerm2 Python API, Linux (.AppImage / .deb) with tmux send-keys, GitHub Actions CI matrix, optional auto-update
+- [ ] **Future** Configurable keyboard shortcuts, session activity timeline, command chains (Crystallize, then wait, then Compact), Discord callback integration, Tailscale plus PWA for remote mobile access, plugin system
 
 Full plan: [ROADMAP.md](ROADMAP.md)
 

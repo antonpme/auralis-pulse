@@ -38,6 +38,7 @@ function loadCustomCommands() {
 
 function saveCustomCommands() {
   localStorage.setItem("pulse-custom-commands", JSON.stringify(settings.customCommands));
+  if (typeof syncUserData === "function") syncUserData();
 }
 
 // Parse token input strings (accepts "250K", "450000", "1.5M", "250,000", etc.)
@@ -131,6 +132,7 @@ function loadPresets() {
 
 function savePresets() {
   localStorage.setItem("pulse-presets", JSON.stringify(settings.presets));
+  if (typeof syncUserData === "function") syncUserData();
 }
 
 // Load per-session preset assignments (keyed by session_id)
@@ -147,6 +149,7 @@ function loadSessionPresets() {
 
 function saveSessionPresets() {
   localStorage.setItem("pulse-session-presets", JSON.stringify(settings.sessionPresets));
+  if (typeof syncUserData === "function") syncUserData();
 }
 
 // Pinned sessions (Set of session_id). Pinned sessions render at top, unaffected by filter.
@@ -192,6 +195,7 @@ function loadSessionAutoCompact() {
 
 function saveSessionAutoCompact() {
   localStorage.setItem("pulse-session-auto-compact", JSON.stringify(settings.sessionAutoCompact));
+  if (typeof syncUserData === "function") syncUserData();
 }
 
 // Detect /compact command (built-in or custom with exact matching text)
@@ -225,6 +229,30 @@ const settings = {
   sessionAutoCompact: loadSessionAutoCompact(),
   sessionPins: loadSessionPins(),
 };
+
+// ---- MCP sync ----
+// Push the live settings snapshot to Rust so MCP tools (pulse_list_presets,
+// pulse_list_commands, etc.) can surface frontend-managed state to external
+// agents. Fire-and-forget: a failure here must never break the UI. Called once
+// at boot (below) and after every CRUD that touches synced fields.
+function syncUserData() {
+  try {
+    const payload = {
+      presets: settings.presets || [],
+      commands: settings.customCommands || [],
+      sessionPresets: settings.sessionPresets || {},
+      autoCompactOverrides: settings.sessionAutoCompact || {},
+    };
+    invoke("sync_user_data", { data: payload }).catch((err) => {
+      console.warn("[mcp] sync_user_data failed:", err);
+    });
+  } catch (err) {
+    console.warn("[mcp] sync_user_data threw:", err);
+  }
+}
+
+// Initial push so MCP read tools work immediately, before any user action.
+syncUserData();
 
 const THEME_SIZES = {
   cyberpunk: { w: 810, h: 520 },

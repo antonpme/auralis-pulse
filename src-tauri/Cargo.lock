@@ -209,7 +209,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "auralis-pulse"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "axum",
  "chrono",
@@ -218,7 +218,7 @@ dependencies = [
  "rand 0.8.5",
  "reqwest 0.12.28",
  "rmcp",
- "schemars 0.8.22",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "sysinfo",

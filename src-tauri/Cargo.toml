@@ -1,6 +1,6 @@
 [package]
 name = "auralis-pulse"
-version = "1.4.0"
+version = "1.4.1"
 edition = "2021"
 
 [build-dependencies]
@@ -23,7 +23,10 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 # MCP server: streamable HTTP transport mounted on existing axum router.
 # default includes macros + server (which pulls schemars).
 rmcp = { version = "1.7", features = ["transport-streamable-http-server"] }
-schemars = "0.8"
+# Must match the version rmcp re-exports (1.x). Mismatch causes the tool macro
+# to generate code referencing rmcp::schemars::JsonSchema while our derives
+# emit schemars::JsonSchema (different trait at the type system level).
+schemars = "1"
 rand = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["auth"] }

@@ -10,6 +10,7 @@ mod pulse_log;
 mod server;
 mod sessions;
 mod settings_store;
+mod user_data_store;
 
 use server::{PermissionResponse, SharedState};
 use std::path::PathBuf;
@@ -184,8 +185,24 @@ fn pin_to_work_area_corner(window: &tauri::WebviewWindow) {
     }
 }
 
+/// Shared in-memory mirror of the latest Anthropic usage snapshot.
+///
+/// `data` is `Arc<Mutex<...>>` (not bare `Mutex<...>`) so the same backing
+/// store can be cloned into `mcp::PulseMcpState` and read by the MCP
+/// `pulse_get_usage` tool without going through Tauri command plumbing.
+/// Cloning the Arc is cheap; both holders see the same updates.
 struct UsageState {
-    data: Mutex<Option<serde_json::Value>>,
+    data: Arc<Mutex<Option<serde_json::Value>>>,
+}
+
+/// Frontend-managed data (presets, custom commands, per-session preset
+/// assignments, per-session auto-compact overrides) mirrored on the Rust side
+/// so MCP tools can surface it to external agents.
+///
+/// The frontend pushes the full payload via the `sync_user_data` command on
+/// every CRUD operation. The same Arc is cloned into `mcp::PulseMcpState`.
+struct UserDataState {
+    data: Arc<Mutex<serde_json::Value>>,
 }
 
 struct TrayMetricState {
@@ -320,6 +337,21 @@ async fn clear_usage_cache(
 #[tauri::command]
 async fn get_mcp_config() -> Result<mcp::McpConfig, String> {
     mcp::McpConfig::load_or_generate()
+}
+
+/// Receive a snapshot of frontend-managed user data (presets, custom commands,
+/// per-session preset assignments, per-session auto-compact overrides) and
+/// mirror it into both the in-memory `UserDataState` and the on-disk
+/// `user-data.json`. Called by the frontend after every CRUD mutation so MCP
+/// tools always see the latest state without polling localStorage from JS.
+#[tauri::command]
+async fn sync_user_data(
+    data: serde_json::Value,
+    state: tauri::State<'_, UserDataState>,
+) -> Result<(), String> {
+    user_data_store::save_user_data(&data);
+    *state.data.lock().await = data;
+    Ok(())
 }
 
 #[tauri::command]
@@ -518,6 +550,18 @@ fn main() {
     let server_state: SharedState = Arc::new(server::ServerState::new());
     let server_state_tauri = server_state.clone();
 
+    // Free-standing Arcs so MCP (`mcp::PulseMcpState`) and Tauri managed state
+    // (`UsageState`, `UserDataState`) share the SAME backing mutex. Without
+    // this, MCP tools and the frontend would see different snapshots.
+    let usage_arc: Arc<Mutex<Option<serde_json::Value>>> =
+        Arc::new(Mutex::new(load_usage_cache()));
+    let user_data_arc: Arc<Mutex<serde_json::Value>> =
+        Arc::new(Mutex::new(user_data_store::load_user_data()));
+
+    // Clones moved into the setup() closure for the MCP spawn task.
+    let mcp_usage_arc = usage_arc.clone();
+    let mcp_user_data_arc = user_data_arc.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -526,7 +570,10 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .manage(server_state_tauri.clone())
         .manage(UsageState {
-            data: Mutex::new(load_usage_cache()),
+            data: usage_arc.clone(),
+        })
+        .manage(UserDataState {
+            data: user_data_arc.clone(),
         })
         .manage(TrayMetricState {
             metric: Mutex::new("weekly".to_string()),
@@ -549,6 +596,7 @@ fn main() {
             refresh_usage,
             clear_usage_cache,
             get_mcp_config,
+            sync_user_data,
             set_tray_metric,
             get_version,
             set_always_on_top,
@@ -614,9 +662,15 @@ fn main() {
             // Start MCP server on 127.0.0.1:59429 (separate port, separate
             // task, separate router). Failure here cannot affect the
             // permission server. Config is loaded/generated and persisted to
-            // %LOCALAPPDATA%\auralis-pulse\mcp.json.
+            // %LOCALAPPDATA%\auralis-pulse\mcp.json. PulseMcpState shares the
+            // same `usage` and `user_data` mutexes as the rest of the app, so
+            // MCP read tools see the live state.
             {
                 tauri::async_runtime::spawn(async move {
+                    let mcp_state = Arc::new(mcp::PulseMcpState {
+                        usage: mcp_usage_arc,
+                        user_data: mcp_user_data_arc,
+                    });
                     match mcp::McpConfig::load_or_generate() {
                         Ok(cfg) => {
                             pulse_log!(
@@ -624,7 +678,7 @@ fn main() {
                                 "MCP enabled at {} (token in mcp.json)",
                                 cfg.url
                             );
-                            mcp::start_mcp_server(cfg).await;
+                            mcp::start_mcp_server(cfg, mcp_state).await;
                         }
                         Err(e) => {
                             pulse_log!(

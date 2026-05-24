@@ -44,3 +44,20 @@ Both modes left the registry out of sync with the user's actual intent, with no 
 **Fix.** `resets_at: Option<String>`. Frontend `formatTimeLeft()` already handled null gracefully. Also stopped swallowing errors in the manual refresh button (empty `catch (_) {}` → toast with the error message).
 
 **Rule.** Treat third-party API schemas as eventually-nullable on every optional-looking field. Default to `Option<T>` for any field that doesn't carry semantic meaning when empty. When a fetch loop encounters a non-success result, surface it visibly somewhere the user can find (toast, log file, status badge) so the next time something silently breaks, we know.
+
+---
+
+## 2026-05-24: `rmcp::Json<T>` returns silently break MCP init (v1.4.1 Phase 2)
+
+**What happened.** Shipped a build of MCP Phase 2 with five read tools using typed structured-output returns: `Json<Vec<SessionInfo>>`, `Json<SessionInfo>`, `Json<serde_json::Value>`. `cargo check` passed. Server bound both ports. Then every MCP client (Claude Code, hand-rolled curl, Python urllib) hit "Failed to connect" / empty TCP reply on the very first `initialize` request. The server did not panic, did not log, did not exit. It just stopped responding to that one request type.
+
+**Root cause hypothesis.** rmcp 1.7 builds an output schema for each `#[tool]` return type at first-request time using `schema_for_output<T: JsonSchema + 'static>`. With `schemars = "1"` (which we had to use to match rmcp's re-export and pass type checking on our `JsonSchema` derives), something in that schema generation path either panics inside the tower service or returns an error rmcp's macro-generated dispatcher then propagates as a connection drop. Could not pinpoint the exact failure because release builds suppress stderr and the failure happens inside an rmcp-internal panic boundary.
+
+**Bisect path.** Comment out all five typed-return tools, leaving only `pulse_ping` (returns `String`) plus full state injection: `claude mcp list` → ✓ Connected. Restore all five tools but rewrite returns as `String` with `serde_json::to_string(&value)`: ✓ Connected and every tool returns correct payloads. State injection itself is fine.
+
+**Fix.** Phase 2 tools return `String` (JSON-stringified). Tool descriptions advertise "Returns a JSON array/object string" so callers know to parse once. `Parameters<GetSessionParams>` with `#[derive(JsonSchema)]` on params is fine, only `Json<T>` on returns triggers the fault. `Result<String, ErrorData>` for fallible tools also fine.
+
+**Rule.**
+1. When integrating an SDK with macro-generated handlers and a re-exported schema crate (rmcp + schemars, axum + tower, etc.), test every distinct return-type shape against a real client before assuming it works. `cargo check` only proves Rust types align; runtime macro expansion lives in a different universe.
+2. Keep a checked-in smoke test (`scripts/mcp_smoke.py`) that drives the full client handshake. Run it after every change to `mcp.rs`. Cheap insurance against regressions.
+3. When investigating "server is alive on port but drops specific requests", the first hypothesis should be schema/macro runtime failure, not network or auth.

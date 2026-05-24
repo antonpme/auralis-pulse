@@ -1,9 +1,14 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use sysinfo::System;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A live Claude Code session as tracked by Pulse.
+///
+/// `JsonSchema` is required so this type can be returned directly from MCP tools
+/// (e.g. `pulse_list_sessions`, `pulse_get_session`) via `rmcp::Json<T>`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SessionInfo {
     pub pid: u32,
     pub session_id: String,

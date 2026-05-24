@@ -178,7 +178,27 @@
 - [x] DevTools enabled in release builds (F12 or Ctrl+Shift+I)
 - [x] Light theme dropdown options correctly colored (color-scheme CSS property)
 
-## v1.4.0 (current)
+## v1.4.1 (current)
+
+### MCP Server Integration: Phase 2 read tools
+- [x] **`pulse_list_sessions`** - returns the live session list (PID, session_id, cwd, name, started_at, duration_mins, last_activity_mins, status, alive) as a JSON array string.
+- [x] **`pulse_get_session(session_id)`** - look up one session by ID. Returns a structured MCP error if no alive session matches.
+- [x] **`pulse_get_usage`** - current Anthropic OAuth usage snapshot: 5h window, weekly, sonnet quota, extra usage. Mirrors the Pulse right panel.
+- [x] **`pulse_list_presets`** - alert presets (Default / Worker / Architect / Orchestrator built-ins, plus any user-added).
+- [x] **`pulse_list_commands`** - custom command library entries.
+
+### Frontend ↔ Rust state mirror (`sync_user_data`)
+- [x] New Tauri command `sync_user_data` pushes presets, custom commands, per-session preset assignments, and per-session auto-compact overrides from the JS frontend into a shared `Arc<Mutex<serde_json::Value>>` that MCP tools read. Persisted to `%LOCALAPPDATA%\auralis-pulse\user-data.json` so cold-start MCP queries return real data even before the frontend boots once.
+- [x] `UsageState.data` refactored to `Arc<Mutex<...>>` so the same backing mutex is shared between Tauri commands and MCP tools without a parallel cache.
+- [x] Frontend calls `syncUserData()` once at boot plus after every CRUD that touches synced fields (presets / commands / session preset assignments / auto-compact overrides).
+
+### Reusable MCP smoke test
+- [x] `scripts/mcp_smoke.py` walks the full Streamable HTTP MCP handshake (initialize → notifications/initialized → tools/list → tools/call x6) using only the Python stdlib. Run after any change to `mcp.rs` to catch protocol regressions before shipping. See `docs/LESSONS.md` for why this exists.
+
+### Engineering lesson captured
+- [x] `docs/LESSONS.md` lesson #4: `rmcp::Json<T>` returns silently drop MCP `initialize` requests under rmcp 1.7 + schemars 1.x. Phase 2 tools work around this by returning JSON-stringified `String`; documented as the official path until upstream compatibility is verified.
+
+## v1.4.0
 
 ### Autostart persistence
 - [x] User's "Start with Windows" preference is now stored in `%LOCALAPPDATA%\auralis-pulse\settings.json` (a directory NSIS does not clean on upgrade). Survives reinstalls. The OS registry is treated as the mechanism to fulfill the intent, not the source of truth.
