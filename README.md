@@ -270,8 +270,8 @@ Pulse queries `DWMWA_EXTENDED_FRAME_BOUNDS` to get the visual rect, computes the
 
 ## Roadmap
 
-- [x] **v1.3** Custom commands, alert presets, per-PID delivery, auto-compact safety, pin sessions, DWM-aware window pinning, preset chip, modal picker, DOM split for overlay isolation
-- [ ] **v1.4** MCP server integration. Phase 1 (foundation) + Phase 2 (5 read tools) shipped in v1.4.0 / v1.4.1; write tools, SSE notifications, Settings UX, and per-client docs land in v1.4.2 – v1.4.5
+- [x] **v1.3** Custom commands, alert presets, per-PID delivery, auto-compact safety, pin sessions, DWM-aware window pinning, preset chip, modal picker, DOM split for overlay isolation. v1.3.6 bugfix: Anthropic usage API resilience (nullable `resets_at`, refresh error toast, clear-cache button)
+- [ ] **v1.4** Autostart preference persistence + diagnostic file logger (`pulse.log`) shipped in v1.4.0. MCP server integration: Phase 1 foundation (v1.4.0) and Phase 2 five read tools (v1.4.1) shipped; write tools, SSE notifications, Settings UX, and per-client docs land in v1.4.2 – v1.4.5
 - [ ] **v1.5** Cross-platform: macOS (.dmg) via iTerm2 Python API, Linux (.AppImage / .deb) with tmux send-keys, GitHub Actions CI matrix, optional auto-update
 - [ ] **Future** Configurable keyboard shortcuts, session activity timeline, command chains (Crystallize, then wait, then Compact), Discord callback integration, Tailscale plus PWA for remote mobile access, plugin system
 
