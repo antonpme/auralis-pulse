@@ -178,7 +178,18 @@
 - [x] DevTools enabled in release builds (F12 or Ctrl+Shift+I)
 - [x] Light theme dropdown options correctly colored (color-scheme CSS property)
 
-## v1.4.4 (current)
+## v1.4.5 (current)
+
+### MCP Server Integration: Phase 6 per-client setup docs
+
+Documentation-only release. Closes the v1.4 MCP arc.
+
+- [x] **README MCP section reworked.** New `Connect from other MCP clients` block with collapsible `<details>` per client. Each block carries: exact Windows config-file path, copy-paste JSON/YAML snippet with `<TOKEN>` placeholder, restart requirement, verification step, and known gotchas. Pulse Settings -> MCP tab remains the source of truth for the actual token value.
+- [x] **Four clients covered.** Cursor (`.cursor/mcp.json` or `~/.cursor/mcp.json`, restart required, supports HTTP + custom headers + env-var interpolation). Continue.dev (`~/.continue/config.yaml`, hot-reloads, `type: streamable-http` is load-bearing). Zed (`%APPDATA%\Zed\settings.json`, hot-reloads except symlinks, key is `context_servers` not `mcpServers`). Claude Desktop (still stdio-only natively + native Custom Connectors require OAuth, so via [`mcp-remote`](https://github.com/geelen/mcp-remote) bridge with `--allow-http` and `--transport http-only`, full quit-and-relaunch required).
+- [x] **Single shared verification step.** Any client: ask for `pulse_ping`, expect `"pong (auralis-pulse v1.4.5)"`. If the version string comes back, both MCP transport and bearer auth are confirmed healthy.
+- [x] **README footer simplified.** Removed the now-stale "land in v1.4.5" promise; the snippets are inline above.
+
+## v1.4.4
 
 ### MCP Server Integration: Phase 4 server-pushed notifications
 
@@ -257,7 +268,7 @@ Pulse can expose session monitoring, command sending, and preset management to M
 - [x] **Phase 3: Write tools.** pulse_send_command, pulse_assign_preset, pulse_refresh_usage, pulse_clear_usage_cache. *(shipped in v1.4.2)*
 - [x] **Phase 5: Settings UX.** New "MCP" tab. Shows port, URL, masked token with Reveal/Hide, Copy token, Copy full `claude mcp add` command, exposed-tools summary. *(shipped in v1.4.3, swapped ahead of Phase 4 since it's pure UI work with high user value)*
 - [x] **Phase 4: Notifications.** Four event kinds broadcast over the MCP `notifications/message` (logging) channel with structured `{ kind, payload }` data: `threshold-crossed` (per-preset, frontend-fired), `session-added`/`session-removed` (backend 30s diff), `usage-updated` (after every Anthropic fetch). `Peer<RoleServer>` captured in `ServerHandler::on_initialized`, transport-closed peers dropped on every broadcast. *(shipped in v1.4.4)*
-- [ ] **Phase 6: Docs.** README MCP section with examples per client (Claude Code, Claude Desktop via mcp-remote bridge, Cursor, Continue, Zed). *(v1.4.5)*
+- [x] **Phase 6: Docs.** README MCP section with examples per client (Claude Code, Claude Desktop via mcp-remote bridge, Cursor, Continue, Zed). *(shipped in v1.4.5)*
 
 ## v1.5.0
 

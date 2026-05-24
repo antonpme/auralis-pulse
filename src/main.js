@@ -1520,7 +1520,7 @@ async function renderMcpTab() {
           <span class="settings-item-value">pulse_send_command, pulse_assign_preset, pulse_refresh_usage, pulse_clear_usage_cache</span>
         </div>
       </div>
-      <div class="settings-group-hint">10 tools total. SSE notifications and per-client setup snippets land in v1.4.4 and v1.4.5.</div>
+      <div class="settings-group-hint">10 tools total. SSE notifications shipped in v1.4.4. See the project README for per-client setup snippets (Cursor, Continue, Zed, Claude Desktop via mcp-remote).</div>
     </div>
   `;
 }

@@ -203,16 +203,139 @@ Per-session opt-in checkbox. Even if a preset fires `/compact`, it's blocked unl
 
 ### MCP server inside
 
-Pulse runs a Streamable HTTP MCP server on `127.0.0.1:59429`. Any MCP-aware agent (Claude Code, Claude Desktop via `mcp-remote`, Cursor, Continue, Zed) can read live Pulse state and, in upcoming patches, drive it.
+Pulse runs a Streamable HTTP MCP server on `127.0.0.1:59429`. Any MCP-aware agent (Claude Code, Cursor, Continue, Zed, Claude Desktop via `mcp-remote`) can read live Pulse state and drive it.
 
-**Wire it into Claude Code in one command.** The token is generated on first launch and lives at `%LOCALAPPDATA%\auralis-pulse\mcp.json`:
+**Wire it into Claude Code in one command.** Open Settings -> MCP inside Pulse and copy the prefilled `claude mcp add` command (token already inlined), or build it yourself with the URL + token from `%LOCALAPPDATA%\auralis-pulse\mcp.json`:
 
 ```bash
 claude mcp add --transport http --scope user auralis-pulse http://127.0.0.1:59429/mcp \
-  --header "Authorization: Bearer <token-from-mcp.json>"
+  --header "Authorization: Bearer <TOKEN>"
 ```
 
-**Tools available today (v1.4.2):**
+**Connect from other MCP clients.** Same server, different config files. Grab the token from Pulse's Settings -> MCP tab (Reveal + Copy) or from `%LOCALAPPDATA%\auralis-pulse\mcp.json`, then paste it into the snippet for your client.
+
+<details>
+<summary><b>Cursor</b></summary>
+
+**Config file:** `<project>\.cursor\mcp.json` (per-project) or `%USERPROFILE%\.cursor\mcp.json` (global).
+
+```json
+{
+  "mcpServers": {
+    "auralis-pulse": {
+      "url": "http://127.0.0.1:59429/mcp",
+      "headers": {
+        "Authorization": "Bearer <TOKEN>"
+      }
+    }
+  }
+}
+```
+
+**Restart Cursor** after editing (or Command Palette -> `Developer: Reload Window`). Cursor does not hot-reload `mcp.json`.
+
+**Verify.** Cursor Settings -> Tools & MCP. The `auralis-pulse` entry shows a green dot and the tool list expanded.
+
+**Tip.** You can substitute `"Authorization": "Bearer ${env:AURALIS_PULSE_TOKEN}"` and set the env var instead of inlining the token.
+
+</details>
+
+<details>
+<summary><b>Continue.dev</b></summary>
+
+**Config file:** `%USERPROFILE%\.continue\config.yaml`.
+
+```yaml
+mcpServers:
+  - name: auralis-pulse
+    type: streamable-http
+    url: http://127.0.0.1:59429/mcp
+    requestOptions:
+      headers:
+        Authorization: Bearer <TOKEN>
+```
+
+**No restart needed.** Continue hot-reloads `config.yaml` on save. If the server doesn't appear, reload the Continue panel or the IDE window.
+
+**Verify.** Open the Continue panel, MCP servers section. `auralis-pulse` shows "Connected" with tools listed.
+
+**Gotcha.** The `type: streamable-http` value is load-bearing. Omit it and Continue falls back to stdio with a cryptic error. The pre-1.0 `experimental.modelContextProtocolServers` schema in `config.json` is deprecated; use the YAML shape above.
+
+</details>
+
+<details>
+<summary><b>Zed</b></summary>
+
+**Config file:** `%APPDATA%\Zed\settings.json` (resolves to `C:\Users\<user>\AppData\Roaming\Zed\settings.json`).
+
+```json
+{
+  "context_servers": {
+    "auralis-pulse": {
+      "url": "http://127.0.0.1:59429/mcp",
+      "headers": {
+        "Authorization": "Bearer <TOKEN>"
+      }
+    }
+  }
+}
+```
+
+**No restart needed.** Zed hot-reloads `settings.json`. Exception: if `settings.json` is a symlink, the file watcher misses changes; run Command Palette -> `workspace: reload` to pick up edits manually.
+
+**Verify.** Open the Agent Panel, settings (gear icon). `auralis-pulse` shows with a green indicator.
+
+**Gotcha.** The setting key is `context_servers`, not `mcpServers`. Easy to mistype if you are coming from Cursor or Claude Code.
+
+</details>
+
+<details>
+<summary><b>Claude Desktop (via mcp-remote bridge)</b></summary>
+
+Claude Desktop's `claude_desktop_config.json` still supports stdio transport only as of 2026. Its native "Custom Connectors" UI talks remote MCP but requires OAuth, which Pulse does not advertise. So we go through the [`mcp-remote`](https://github.com/geelen/mcp-remote) bridge.
+
+**Prerequisite:** Node.js on `PATH` so `npx` resolves. Install from [nodejs.org](https://nodejs.org/) if missing.
+
+**Config file:** `%APPDATA%\Claude\claude_desktop_config.json`.
+
+```json
+{
+  "mcpServers": {
+    "auralis-pulse": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://127.0.0.1:59429/mcp",
+        "--transport",
+        "http-only",
+        "--allow-http",
+        "--header",
+        "Authorization:Bearer ${AURALIS_PULSE_TOKEN}"
+      ],
+      "env": {
+        "AURALIS_PULSE_TOKEN": "<TOKEN>"
+      }
+    }
+  }
+}
+```
+
+**Fully restart Claude Desktop** after editing (tray icon -> Quit, not just close window).
+
+**Verify.** Claude Desktop -> Settings -> Developer -> MCP Servers. `auralis-pulse` shows "running". In a chat, the tools list (hammer icon) lists the ten Pulse tools.
+
+**Gotchas.**
+- `--allow-http` is mandatory for the `http://127.0.0.1` URL. Without it, `mcp-remote` rejects non-HTTPS targets and the connection silently fails.
+- `--transport http-only` locks the bridge to Streamable HTTP. The default `http-first` falls back to SSE on probe failures, which Pulse does not serve.
+- The `Authorization:Bearer ${TOKEN}` value uses no space after `:` on purpose. Windows argv mangles header strings with embedded spaces; HTTP parsers tolerate the missing space.
+- If Claude Desktop ignores the file, enable Settings -> Developer Mode and restart again.
+
+</details>
+
+**Quick sanity check.** Once wired, ask the client to call `pulse_ping`. The expected response is `"pong (auralis-pulse v1.4.5)"`. If you see the version string, MCP transport and bearer auth are both healthy.
+
+**Tools available today (v1.4.5):**
 
 *Read:*
 
@@ -234,7 +357,7 @@ claude mcp add --transport http --scope user auralis-pulse http://127.0.0.1:5942
 | `pulse_refresh_usage` | Force an immediate Anthropic OAuth refresh, bypass the periodic loop. Returns the fresh usage state. |
 | `pulse_clear_usage_cache` | Wipe disk cache + clear in-memory mirror. Pulse refetches on next tick. |
 
-Bearer-token auth, localhost-only by design. Dedicated MCP tab inside Settings shipped in v1.4.3 (port, masked token, copy-button for the full `claude mcp add` command). Server-pushed notifications (`threshold-crossed`, `session-added`, `session-removed`, `usage-updated`) shipped in v1.4.4 — connected clients react instantly without polling. Per-client setup docs for Cursor / Continue / Zed / Claude Desktop land in v1.4.5.
+Bearer-token auth, localhost-only by design. The MCP tab inside Settings (v1.4.3) shows port, masked token, and a copy-button for the full `claude mcp add` command. Server-pushed notifications (`threshold-crossed`, `session-added`, `session-removed`, `usage-updated`) landed in v1.4.4 so connected clients react instantly without polling. Per-client setup snippets (v1.4.5) for Cursor, Continue, Zed, and Claude Desktop via `mcp-remote` are in the collapsible blocks above.
 
 <a id="how-it-works"></a>
 
@@ -288,7 +411,7 @@ Pulse queries `DWMWA_EXTENDED_FRAME_BOUNDS` to get the visual rect, computes the
   - [x] **v1.4.2** MCP Phase 3: four write tools — `pulse_send_command(pid, text)` injects a slash command or natural-language message into a specific Claude Code session, `pulse_assign_preset(session_id, preset_id)` swaps a session's alert ceiling (round-trips through the frontend so localStorage stays consistent), `pulse_refresh_usage` forces an Anthropic OAuth fetch, `pulse_clear_usage_cache` nukes the disk cache. Closes the loop: agents can now act on Pulse, not just read from it.
   - [x] **v1.4.3** MCP Phase 5: new MCP tab inside Settings — shows port, URL, masked token (with Reveal/Hide), one-click copy for the bearer token and the full `claude mcp add` command, plus a summary of exposed tools. No more digging through `mcp.json` to wire a client.
   - [x] **v1.4.4** MCP Phase 4: server-pushed notifications over the MCP `notifications/message` channel. Pulse broadcasts four event kinds with structured `{ kind, payload }` data: `threshold-crossed` (per-preset, fired by the frontend hysteresis loop, carries `session_id`/`pid`/`tier`/`used_tokens`/`limit_tokens`/`preset_name`), `session-added` and `session-removed` (diffed every 30s in the backend session refresh loop), `usage-updated` (after every successful Anthropic OAuth fetch, slim payload with `five_hour_pct`/`weekly_pct`/`sonnet_pct`). Server-side `Peer<RoleServer>` capture in `on_initialized`, transport-closed peers dropped on every broadcast. Connected clients get instant reactions, no polling.
-  - [ ] **v1.4.5** MCP Phase 6: per-client setup docs — copy-paste config snippets for Cursor (`.cursor/mcp.json`), Continue (`config.json`), Zed (`settings.json`), Claude Desktop (via `mcp-remote` bridge), plus a verification section showing what `pulse_ping` should return for each.
+  - [x] **v1.4.5** MCP Phase 6: per-client setup docs. Copy-paste config snippets for Cursor (`.cursor/mcp.json`), Continue (`config.yaml`), Zed (`settings.json`), Claude Desktop (via `mcp-remote` bridge), plus a single `pulse_ping` sanity check shared across all four. Documentation-only; no runtime changes.
 - [ ] **v1.5** Cross-platform: macOS (.dmg) via iTerm2 Python API, Linux (.AppImage / .deb) with tmux send-keys, GitHub Actions CI matrix, optional auto-update
 - [ ] **Future** Configurable keyboard shortcuts, session activity timeline, command chains (Crystallize, then wait, then Compact), Discord callback integration, Tailscale plus PWA for remote mobile access, plugin system
 
