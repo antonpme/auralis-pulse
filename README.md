@@ -234,7 +234,7 @@ claude mcp add --transport http --scope user auralis-pulse http://127.0.0.1:5942
 | `pulse_refresh_usage` | Force an immediate Anthropic OAuth refresh, bypass the periodic loop. Returns the fresh usage state. |
 | `pulse_clear_usage_cache` | Wipe disk cache + clear in-memory mirror. Pulse refetches on next tick. |
 
-Bearer-token auth, localhost-only by design. Threshold-crossed and session-add/remove notifications over SSE (v1.4.3), a dedicated Settings tab for the MCP config (v1.4.4), and per-client setup docs for Cursor / Continue / Zed / Claude Desktop (v1.4.5) follow.
+Bearer-token auth, localhost-only by design. Dedicated MCP tab inside Settings shipped in v1.4.3 (port, masked token, copy-button for the full `claude mcp add` command). Threshold-crossed and session-add/remove notifications over SSE land in v1.4.4, per-client setup docs for Cursor / Continue / Zed / Claude Desktop in v1.4.5.
 
 <a id="how-it-works"></a>
 
@@ -286,8 +286,8 @@ Pulse queries `DWMWA_EXTENDED_FRAME_BOUNDS` to get the visual rect, computes the
   - [x] **v1.4.0** Autostart preference persistence + diagnostic file logger (`pulse.log`) + MCP server foundation (Phase 1)
   - [x] **v1.4.1** MCP Phase 2: five read tools (`pulse_list_sessions`, `pulse_get_session`, `pulse_get_usage`, `pulse_list_presets`, `pulse_list_commands`) + JS↔Rust state mirror
   - [x] **v1.4.2** MCP Phase 3: four write tools — `pulse_send_command(pid, text)` injects a slash command or natural-language message into a specific Claude Code session, `pulse_assign_preset(session_id, preset_id)` swaps a session's alert ceiling (round-trips through the frontend so localStorage stays consistent), `pulse_refresh_usage` forces an Anthropic OAuth fetch, `pulse_clear_usage_cache` nukes the disk cache. Closes the loop: agents can now act on Pulse, not just read from it.
-  - [ ] **v1.4.3** MCP Phase 4: SSE notifications — server-pushed events over the existing MCP stream so clients react instantly without polling. Threshold-crossed (session hit a configured tier), session add/remove (new tab opened or ghost dismissed), usage-updated (new Anthropic snapshot fetched).
-  - [ ] **v1.4.4** MCP Phase 5: new MCP tab inside Settings — shows port, masked token, listening status; one-click "Copy `claude mcp add` command" so no one has to dig through `mcp.json` to wire a client.
+  - [x] **v1.4.3** MCP Phase 5: new MCP tab inside Settings — shows port, URL, masked token (with Reveal/Hide), one-click copy for the bearer token and the full `claude mcp add` command, plus a summary of exposed tools. No more digging through `mcp.json` to wire a client.
+  - [ ] **v1.4.4** MCP Phase 4: SSE notifications — server-pushed events over the existing MCP stream so clients react instantly without polling. Threshold-crossed (session hit a configured tier), session add/remove (new tab opened or ghost dismissed), usage-updated (new Anthropic snapshot fetched).
   - [ ] **v1.4.5** MCP Phase 6: per-client setup docs — copy-paste config snippets for Cursor (`.cursor/mcp.json`), Continue (`config.json`), Zed (`settings.json`), Claude Desktop (via `mcp-remote` bridge), plus a verification section showing what `pulse_ping` should return for each.
 - [ ] **v1.5** Cross-platform: macOS (.dmg) via iTerm2 Python API, Linux (.AppImage / .deb) with tmux send-keys, GitHub Actions CI matrix, optional auto-update
 - [ ] **Future** Configurable keyboard shortcuts, session activity timeline, command chains (Crystallize, then wait, then Compact), Discord callback integration, Tailscale plus PWA for remote mobile access, plugin system

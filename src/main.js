@@ -10,12 +10,13 @@ let renderLock = false;
 let lastGhostCount = 0;
 
 // ---- v1.3 STATE (tabs, modal, popover, toast) ----
-let activeSettingsTab = "appearance"; // "appearance" | "behavior" | "alerts" | "commands" | "about"
+let activeSettingsTab = "appearance"; // "appearance" | "behavior" | "alerts" | "commands" | "mcp" | "about"
 let activeModal = null; // null | { type: string, data: object }
 let activePopover = null; // null | { type: string, sessionId?: string, anchorRect: DOMRect }
 let toasts = []; // { id, type, message, duration, cancellable, onComplete, onCancel, timer, cancelled }
 let toastCounter = 0;
 let firedThresholds = {}; // { [sessionId]: { t1: bool, t2: bool, t3: bool } } - hysteresis
+let mcpTokenRevealed = false; // v1.4.3: MCP tab token visibility (reset on tab/view exit)
 
 // ---- SETTINGS STATE ----
 
@@ -1405,6 +1406,105 @@ function deleteCommandById(id) {
   showToast({ type: "info", message: `Deleted '${cmd.name}'`, duration: 1800 });
 }
 
+function maskMcpToken(token) {
+  if (!token || token.length < 12) return "(invalid)";
+  return token.slice(0, 6) + "..." + token.slice(-4);
+}
+
+function buildClaudeMcpAddCommand(cfg) {
+  // Single-line form so paste-into-terminal works on Windows cmd, PowerShell, bash, zsh.
+  return `claude mcp add --transport http --scope user auralis-pulse ${cfg.url} --header "Authorization: Bearer ${cfg.token}"`;
+}
+
+async function renderMcpTab() {
+  let cfg = null;
+  let loadErr = null;
+  try {
+    cfg = await invoke("get_mcp_config");
+  } catch (err) {
+    loadErr = String(err || "Unknown error");
+  }
+
+  if (!cfg) {
+    return `
+      <div class="settings-group">
+        <div class="settings-group-label">MCP SERVER</div>
+        <div class="settings-card">
+          <div class="settings-item">
+            <span class="settings-item-label">Failed to load MCP config</span>
+            <span class="settings-item-value">${escapeHtml(loadErr || "no data")}</span>
+          </div>
+        </div>
+        <div class="settings-group-hint">Restart Pulse and try again. If this persists, check <code>%LOCALAPPDATA%\\auralis-pulse\\pulse.log</code>.</div>
+      </div>
+    `;
+  }
+
+  const tokenDisplay = mcpTokenRevealed ? escapeHtml(cfg.token) : escapeHtml(maskMcpToken(cfg.token));
+  const revealLabel = mcpTokenRevealed ? "Hide token" : "Reveal token";
+  const command = buildClaudeMcpAddCommand(cfg);
+
+  return `
+    <div class="settings-group">
+      <div class="settings-group-label">MCP CONNECTION</div>
+      <div class="settings-card">
+        <div class="settings-item">
+          <span class="settings-item-label">Listening on</span>
+          <span class="settings-item-value">127.0.0.1:${cfg.port}</span>
+        </div>
+        <div class="settings-item">
+          <span class="settings-item-label">URL</span>
+          <span class="settings-item-value">${escapeHtml(cfg.url)}</span>
+        </div>
+      </div>
+      <div class="settings-group-hint">Local-only Streamable HTTP server. Bearer-token auth. Other machines on the network cannot reach it.</div>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-label">BEARER TOKEN</div>
+      <div class="settings-card">
+        <div class="settings-item">
+          <span class="settings-item-label">Token</span>
+          <span class="settings-item-value mcp-token">${tokenDisplay}</span>
+        </div>
+        <div class="settings-item settings-item-action mcp-button-row">
+          <button class="btn btn-secondary" data-action="toggle-mcp-token">${revealLabel}</button>
+          <button class="btn btn-secondary" data-action="copy-mcp-token">Copy token</button>
+        </div>
+      </div>
+      <div class="settings-group-hint">Persisted at <code>%LOCALAPPDATA%\\auralis-pulse\\mcp.json</code>. Treat it like a password.</div>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-label">QUICK START &middot; CLAUDE CODE</div>
+      <div class="settings-card">
+        <div class="mcp-command-row">
+          <pre class="mcp-command">${escapeHtml(command)}</pre>
+        </div>
+        <div class="settings-item settings-item-action mcp-button-row">
+          <button class="btn btn-secondary" data-action="copy-mcp-command">Copy full command</button>
+        </div>
+      </div>
+      <div class="settings-group-hint">Paste in any terminal where the <code>claude</code> CLI is installed. Verify with <code>claude mcp list</code> &mdash; should show <code>auralis-pulse: ... &#x2713; Connected</code>.</div>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-label">EXPOSED TOOLS</div>
+      <div class="settings-card">
+        <div class="settings-item">
+          <span class="settings-item-label">Read</span>
+          <span class="settings-item-value">pulse_ping, pulse_list_sessions, pulse_get_session, pulse_get_usage, pulse_list_presets, pulse_list_commands</span>
+        </div>
+        <div class="settings-item">
+          <span class="settings-item-label">Write</span>
+          <span class="settings-item-value">pulse_send_command, pulse_assign_preset, pulse_refresh_usage, pulse_clear_usage_cache</span>
+        </div>
+      </div>
+      <div class="settings-group-hint">10 tools total. SSE notifications and per-client setup snippets land in v1.4.4 and v1.4.5.</div>
+    </div>
+  `;
+}
+
 function renderAboutTab(appVersion) {
   return `
     <div class="settings-group">
@@ -1428,6 +1528,7 @@ async function renderSettingsView() {
     ["behavior", "Behavior"],
     ["alerts", "Alerts"],
     ["commands", "Commands"],
+    ["mcp", "MCP"],
     ["about", "About"],
   ];
 
@@ -1437,6 +1538,7 @@ async function renderSettingsView() {
     case "behavior": content = await renderBehaviorTab(); break;
     case "alerts": content = renderAlertsTab(); break;
     case "commands": content = renderCommandsTab(); break;
+    case "mcp": content = await renderMcpTab(); break;
     case "about": content = renderAboutTab(appVersion); break;
     default: content = renderAppearanceTab();
   }
@@ -1803,12 +1905,47 @@ document.addEventListener("click", async (e) => {
 
   // Navigation
   if (action === "open-settings") { currentView = "settings"; render(); return; }
-  if (action === "back") { currentView = "main"; render(); return; }
+  if (action === "back") { currentView = "main"; mcpTokenRevealed = false; render(); return; }
 
   // Settings tabs
   if (action === "set-settings-tab") {
-    activeSettingsTab = target.dataset.tab;
+    const nextTab = target.dataset.tab;
+    if (nextTab !== "mcp") mcpTokenRevealed = false;
+    activeSettingsTab = nextTab;
     render();
+    return;
+  }
+
+  // ---- MCP TAB ACTIONS (v1.4.3 Phase 5) ----
+
+  if (action === "toggle-mcp-token") {
+    mcpTokenRevealed = !mcpTokenRevealed;
+    render();
+    return;
+  }
+
+  if (action === "copy-mcp-token") {
+    try {
+      const cfg = await invoke("get_mcp_config");
+      await navigator.clipboard.writeText(cfg.token);
+      showToast({ type: "info", message: "Token copied to clipboard", duration: 1500 });
+    } catch (err) {
+      const msg = String(err || "Unknown error").slice(0, 200);
+      showToast({ type: "error", message: `Copy failed: ${msg}`, duration: 4000 });
+    }
+    return;
+  }
+
+  if (action === "copy-mcp-command") {
+    try {
+      const cfg = await invoke("get_mcp_config");
+      const cmd = buildClaudeMcpAddCommand(cfg);
+      await navigator.clipboard.writeText(cmd);
+      showToast({ type: "info", message: "Command copied to clipboard", duration: 1500 });
+    } catch (err) {
+      const msg = String(err || "Unknown error").slice(0, 200);
+      showToast({ type: "error", message: `Copy failed: ${msg}`, duration: 4000 });
+    }
     return;
   }
 
@@ -2058,7 +2195,7 @@ document.addEventListener("keydown", async (e) => {
     // Priority: modal > popover > settings view > hide window
     if (activeModal) { closeModal(); return; }
     if (activePopover) { closePopover(); return; }
-    if (currentView === "settings") { currentView = "main"; render(); return; }
+    if (currentView === "settings") { currentView = "main"; mcpTokenRevealed = false; render(); return; }
     window.__TAURI__.window.getCurrentWindow().hide();
     return;
   }

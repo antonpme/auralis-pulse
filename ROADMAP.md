@@ -178,7 +178,15 @@
 - [x] DevTools enabled in release builds (F12 or Ctrl+Shift+I)
 - [x] Light theme dropdown options correctly colored (color-scheme CSS property)
 
-## v1.4.2 (current)
+## v1.4.3 (current)
+
+### MCP Server Integration: Phase 5 Settings tab
+- [x] **New "MCP" tab inside Settings** (between Commands and About). Connection group shows the listening address (`127.0.0.1:<port>`) and full URL. Token group shows a masked token (`first6...last4`) with Reveal/Hide and Copy buttons. Quick Start group shows the full `claude mcp add --transport http --scope user auralis-pulse <url> --header "Authorization: Bearer <token>"` command in a monospace block with a one-click Copy. Exposed Tools group lists all 10 tool names so a user immediately sees the surface.
+- [x] **Zero-friction client wiring.** No more digging through `%LOCALAPPDATA%\auralis-pulse\mcp.json` to find the bearer token. Open Settings → MCP → Copy command → paste into terminal → done.
+- [x] **Reveal-state hygiene.** Token starts masked. Toggling Reveal flips it. Switching tabs or closing Settings (Back button or Escape) auto-resets to masked — no leaving a revealed token on screen if you wander away.
+- [x] **Reuses existing `get_mcp_config` Tauri command** shipped in v1.4.0. No new Rust surface, pure frontend work (main.js + style.css). Clipboard via `navigator.clipboard.writeText()` works in the Tauri webview without an extra plugin.
+
+## v1.4.2
 
 ### MCP Server Integration: Phase 3 write tools
 - [x] **`pulse_send_command(pid, text)`** - inject any text (slash command or natural-language message) into a specific Claude Code session's terminal. Uses the standard per-PID delivery path: `AttachConsole` + `WriteConsoleInputW` with bracketed-paste mode, `SendKeys` fallback for elevated processes.
@@ -228,12 +236,12 @@
 ### MCP Server Integration: Foundation
 Pulse can expose session monitoring, command sending, and preset management to MCP clients (Claude Code, Claude Desktop, Cursor, Continue, Zed) over Streamable HTTP transport. Bearer-token auth, port + token persisted to `%LOCALAPPDATA%\auralis-pulse\mcp.json`.
 
-- [x] **Phase 1: Foundation.** rmcp 1.7 dep, McpConfig generation + persistence, bearer-auth on dedicated listener `127.0.0.1:59429/mcp` (separate from the permission server on 59428 to keep failure domains independent), `pulse_ping` smoke-test tool, `get_mcp_config` Tauri command.
-- [ ] **Phase 2: Read-only tools.** pulse_list_sessions, pulse_get_session, pulse_get_usage, pulse_list_presets, pulse_list_commands. *(landing in v1.4.1)*
-- [ ] **Phase 3: Write tools.** pulse_send_command, pulse_assign_preset, pulse_refresh_usage, pulse_clear_usage_cache. *(v1.4.2)*
-- [ ] **Phase 4: Notifications.** threshold-crossed, session-added/removed, usage-updated events as MCP notifications over SSE. *(v1.4.3)*
-- [ ] **Phase 5: Settings UX.** New "MCP" tab. Shows port, masked token, status, one-click copy of `claude mcp add` command, enable/disable toggle. *(v1.4.4)*
-- [ ] **Phase 6: Docs.** README MCP section with examples per client (Claude Code, Claude Desktop via mcp-remote bridge, Cursor). *(v1.4.5)*
+- [x] **Phase 1: Foundation.** rmcp 1.7 dep, McpConfig generation + persistence, bearer-auth on dedicated listener `127.0.0.1:59429/mcp` (separate from the permission server on 59428 to keep failure domains independent), `pulse_ping` smoke-test tool, `get_mcp_config` Tauri command. *(shipped in v1.4.0)*
+- [x] **Phase 2: Read-only tools.** pulse_list_sessions, pulse_get_session, pulse_get_usage, pulse_list_presets, pulse_list_commands. *(shipped in v1.4.1)*
+- [x] **Phase 3: Write tools.** pulse_send_command, pulse_assign_preset, pulse_refresh_usage, pulse_clear_usage_cache. *(shipped in v1.4.2)*
+- [x] **Phase 5: Settings UX.** New "MCP" tab. Shows port, URL, masked token with Reveal/Hide, Copy token, Copy full `claude mcp add` command, exposed-tools summary. *(shipped in v1.4.3, swapped ahead of Phase 4 since it's pure UI work with high user value)*
+- [ ] **Phase 4: Notifications.** threshold-crossed, session-added/removed, usage-updated events as MCP notifications over SSE. *(v1.4.4, needs research-spike on rmcp's `Peer<RoleServer>` broadcast pattern)*
+- [ ] **Phase 6: Docs.** README MCP section with examples per client (Claude Code, Claude Desktop via mcp-remote bridge, Cursor, Continue, Zed). *(v1.4.5)*
 
 ## v1.5.0
 
