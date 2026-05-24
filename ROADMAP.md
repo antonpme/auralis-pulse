@@ -178,17 +178,26 @@
 - [x] DevTools enabled in release builds (F12 or Ctrl+Shift+I)
 - [x] Light theme dropdown options correctly colored (color-scheme CSS property)
 
-## v1.4.0 (in development)
+## v1.4.0 (current)
 
-### MCP Server Integration
-Pulse exposes session monitoring, command sending, and preset management to MCP clients (Claude Code, Claude Desktop, Cursor, Continue, Zed) over Streamable HTTP transport. Mounted at `/mcp` on the existing localhost server, bearer-token auth, port + token persisted to `%LOCALAPPDATA%\auralis-pulse\mcp.json`.
+### Autostart persistence
+- [x] User's "Start with Windows" preference is now stored in `%LOCALAPPDATA%\auralis-pulse\settings.json` (a directory NSIS does not clean on upgrade). Survives reinstalls. The OS registry is treated as the mechanism to fulfill the intent, not the source of truth.
+- [x] Self-heal on every Pulse startup: if `pref=true` and the registry value is out of sync (stale dev path, NSIS cleanup), re-register the current exe path. Idempotent.
+- [x] `get_autostart` Tauri command returns the saved pref, not the registry state. UI shows the user's actual intent.
 
-- [x] **Phase 1: Foundation.** rmcp 1.7 dep, McpConfig generation + persistence, bearer-auth middleware, /mcp nest on existing axum router, `pulse_ping` smoke-test tool, `get_mcp_config` Tauri command.
-- [ ] **Phase 2: Read-only tools.** pulse_list_sessions, pulse_get_session, pulse_get_usage, pulse_list_presets, pulse_list_commands.
-- [ ] **Phase 3: Write tools.** pulse_send_command, pulse_assign_preset, pulse_refresh_usage, pulse_clear_usage_cache.
-- [ ] **Phase 4: Notifications.** threshold-crossed, session-added/removed, usage-updated events as MCP notifications over SSE.
-- [ ] **Phase 5: Settings UX.** New "MCP" tab. Shows port, masked token, status, one-click copy of `claude mcp add` command, enable/disable toggle.
-- [ ] **Phase 6: Docs.** README MCP section with examples per client (Claude Code, Claude Desktop via mcp-remote bridge, Cursor).
+### Diagnostic file logger
+- [x] New `pulse_log` module writes timestamped lines to `%LOCALAPPDATA%\auralis-pulse\pulse.log` (1 MB cap, truncate on roll). Pulse builds with `windows_subsystem = "windows"` in release, so `eprintln!` is invisible; this file is the canonical place to look when something silently fails.
+- [x] Used at server bind, MCP startup, autostart self-heal, mcp.json migration.
+
+### MCP Server Integration: Foundation
+Pulse can expose session monitoring, command sending, and preset management to MCP clients (Claude Code, Claude Desktop, Cursor, Continue, Zed) over Streamable HTTP transport. Bearer-token auth, port + token persisted to `%LOCALAPPDATA%\auralis-pulse\mcp.json`.
+
+- [x] **Phase 1: Foundation.** rmcp 1.7 dep, McpConfig generation + persistence, bearer-auth on dedicated listener `127.0.0.1:59429/mcp` (separate from the permission server on 59428 to keep failure domains independent), `pulse_ping` smoke-test tool, `get_mcp_config` Tauri command.
+- [ ] **Phase 2: Read-only tools.** pulse_list_sessions, pulse_get_session, pulse_get_usage, pulse_list_presets, pulse_list_commands. *(landing in v1.4.1)*
+- [ ] **Phase 3: Write tools.** pulse_send_command, pulse_assign_preset, pulse_refresh_usage, pulse_clear_usage_cache. *(v1.4.2)*
+- [ ] **Phase 4: Notifications.** threshold-crossed, session-added/removed, usage-updated events as MCP notifications over SSE. *(v1.4.3)*
+- [ ] **Phase 5: Settings UX.** New "MCP" tab. Shows port, masked token, status, one-click copy of `claude mcp add` command, enable/disable toggle. *(v1.4.4)*
+- [ ] **Phase 6: Docs.** README MCP section with examples per client (Claude Code, Claude Desktop via mcp-remote bridge, Cursor). *(v1.4.5)*
 
 ## v1.5.0
 
