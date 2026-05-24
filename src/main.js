@@ -1679,6 +1679,26 @@ listen("sessions-updated", () => { if (currentView === "main") render({ overlays
 listen("usage-updated", () => { if (currentView === "main") render({ overlays: false }); });
 listen("open-settings", () => { currentView = "settings"; render(); });
 
+// MCP write tool: pulse_assign_preset fires this event after validating the
+// preset_id against the live library. We apply to settings.sessionPresets,
+// persist to localStorage, and sync back to Rust through saveSessionPresets()
+// (which calls syncUserData) - eventual consistency, no lost writes.
+listen("mcp-assign-preset", (event) => {
+  const payload = event?.payload || {};
+  const { session_id, preset_id } = payload;
+  if (!session_id || !preset_id) return;
+  const preset = (settings.presets || []).find((p) => p.id === preset_id);
+  if (!preset) {
+    console.warn("[mcp] assign-preset event for unknown preset_id:", preset_id);
+    return;
+  }
+  if (!settings.sessionPresets) settings.sessionPresets = {};
+  settings.sessionPresets[session_id] = preset_id;
+  saveSessionPresets();
+  if (currentView === "main") render({ overlays: false });
+  showToast({ type: "info", message: `Preset → ${preset.name} (via MCP)`, duration: 1500 });
+});
+
 render();
 setInterval(() => { if (currentView === "main") render({ overlays: false }); }, 15000);
 

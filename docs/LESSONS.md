@@ -61,3 +61,29 @@ Both modes left the registry out of sync with the user's actual intent, with no 
 1. When integrating an SDK with macro-generated handlers and a re-exported schema crate (rmcp + schemars, axum + tower, etc.), test every distinct return-type shape against a real client before assuming it works. `cargo check` only proves Rust types align; runtime macro expansion lives in a different universe.
 2. Keep a checked-in smoke test (`scripts/mcp_smoke.py`) that drives the full client handshake. Run it after every change to `mcp.rs`. Cheap insurance against regressions.
 3. When investigating "server is alive on port but drops specific requests", the first hypothesis should be schema/macro runtime failure, not network or auth.
+
+---
+
+## 2026-05-24: MCP write tools that mutate frontend state need an event round-trip, not a direct write (v1.4.2 Phase 3)
+
+**What happened.** Designing `pulse_assign_preset`, the obvious shape was: take `session_id` + `preset_id`, mutate `user_data["sessionPresets"]` in the Rust-side `Arc<Mutex<Value>>`, done. Tested in isolation it works. But the frontend owns `settings.sessionPresets` in JS memory + localStorage, and it overwrites the Rust mirror on every CRUD via `sync_user_data`. So an MCP-side write would be silently nuked the next time the user toggled any setting in the UI.
+
+**Root cause.** Two sources of truth for the same data. Frontend's `localStorage` and Rust's `Arc<Mutex<Value>>` are kept in sync ONE direction (`syncUserData()` pushes JS → Rust). Anything Rust writes alone is racing with the next push.
+
+**Fix.** Round-trip through the frontend. MCP tool:
+1. Validates `preset_id` against the current preset library (read-only check on `user_data`).
+2. Emits a Tauri event (`mcp-assign-preset`) with `{ session_id, preset_id }` payload via `app_handle.emit(...)`.
+3. Returns immediately with "dispatched" status.
+
+Frontend listener:
+1. Receives the event.
+2. Re-validates preset still exists (race-safe).
+3. Mutates `settings.sessionPresets[session_id] = preset_id`.
+4. Calls `saveSessionPresets()`, which persists to localStorage AND triggers the normal `syncUserData()` push back to Rust.
+5. Re-renders + toasts.
+
+Required `PulseMcpState` to hold an `AppHandle` (added via Phase 3 refactor). Now any future write tool that needs to mutate frontend-owned state has a working pattern.
+
+**Trade-off.** Eventually consistent. The MCP tool's success response means "dispatched", not "applied". A client calling `pulse_list_presets` immediately after `pulse_assign_preset` might briefly see the old value (within ~100ms). Acceptable for the use case.
+
+**Rule.** If two layers own the same data and only one direction is synced (JS → Rust here), don't let the other layer write directly. Route writes through the syncing layer so reconciliation is automatic. The `AppHandle` injection pattern is the right shape: MCP tools nudge the UI, the UI is the source of truth, Rust is the read mirror.

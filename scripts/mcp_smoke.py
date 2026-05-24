@@ -139,15 +139,23 @@ def main() -> int:
     for t in tools:
         print(f"  - {t.get('name')}: {(t.get('description') or '')[:80]}")
 
-    expected = {"pulse_ping", "pulse_list_sessions", "pulse_get_session",
-                "pulse_get_usage", "pulse_list_presets", "pulse_list_commands"}
+    expected = {
+        # Phase 1
+        "pulse_ping",
+        # Phase 2 (read)
+        "pulse_list_sessions", "pulse_get_session", "pulse_get_usage",
+        "pulse_list_presets", "pulse_list_commands",
+        # Phase 3 (write)
+        "pulse_send_command", "pulse_assign_preset",
+        "pulse_refresh_usage", "pulse_clear_usage_cache",
+    }
     actual = {t.get("name") for t in tools}
     missing = expected - actual
     extra = actual - expected
     if missing:
         print(f"MISSING tools: {missing}")
     if extra:
-        print(f"EXTRA tools (ok if Phase 3+ landed): {extra}")
+        print(f"EXTRA tools (ok if Phase 4+ landed): {extra}")
 
     def call(name: str, args: dict | None = None, rid: int = 10):
         body, _ = post("tools/call", {"name": name, "arguments": args or {}}, req_id=rid)
@@ -194,6 +202,33 @@ def main() -> int:
     banner("pulse_get_session (negative case)")
     show(extract_structured(call("pulse_get_session",
                                  {"session_id": "DOES-NOT-EXIST-zzz"}, rid=16)), limit=400)
+
+    # -------------- Phase 3 write tools --------------
+
+    banner("pulse_send_command (negative: bogus PID)")
+    # Never inject into a real session from the smoke test - too destructive.
+    # Bogus PID gives us a clean error-path verification.
+    show(extract_structured(call("pulse_send_command",
+                                 {"pid": 999999, "text": "/cost"}, rid=20)), limit=400)
+
+    banner("pulse_assign_preset (negative: unknown preset_id)")
+    show(extract_structured(call("pulse_assign_preset",
+                                 {"session_id": first_session_id or "any",
+                                  "preset_id": "preset-DOES-NOT-EXIST"}, rid=21)), limit=400)
+
+    if first_session_id:
+        banner("pulse_assign_preset (positive)")
+        # Re-assign the first session to preset-default. Safe + idempotent.
+        # Pulse UI will toast "Preset -> Default (via MCP)" if the listener fires.
+        show(extract_structured(call("pulse_assign_preset",
+                                     {"session_id": first_session_id,
+                                      "preset_id": "preset-default"}, rid=22)), limit=400)
+
+    banner("pulse_clear_usage_cache")
+    show(extract_structured(call("pulse_clear_usage_cache", rid=23)), limit=300)
+
+    banner("pulse_refresh_usage (re-populates after clear)")
+    show(extract_structured(call("pulse_refresh_usage", rid=24)), limit=900)
 
     print("\nDONE")
     return 0

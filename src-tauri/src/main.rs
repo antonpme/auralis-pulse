@@ -26,14 +26,17 @@ use tokio::sync::Mutex;
 
 // ---- Usage disk cache + backoff helpers ----
 
-fn usage_cache_path() -> Result<PathBuf, String> {
+// Crate-visible because the MCP write tools in `mcp.rs` reuse this path for
+// `pulse_clear_usage_cache` and `pulse_refresh_usage`. Keeping a single helper
+// avoids the two modules drifting on where the cache file lives.
+pub(crate) fn usage_cache_path() -> Result<PathBuf, String> {
     let base = dirs::data_local_dir().ok_or_else(|| "Cannot find local data dir".to_string())?;
     let dir = base.join("auralis-pulse");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir.join("usage-cache.json"))
 }
 
-fn save_usage_cache(data: &serde_json::Value) {
+pub(crate) fn save_usage_cache(data: &serde_json::Value) {
     if let Ok(path) = usage_cache_path() {
         if let Ok(json) = serde_json::to_string(data) {
             let _ = std::fs::write(&path, json);
@@ -441,7 +444,7 @@ async fn toggle_autostart(app: tauri::AppHandle) -> Result<bool, String> {
     Ok(new_state)
 }
 
-async fn fetch_usage_data() -> Result<serde_json::Value, String> {
+pub(crate) async fn fetch_usage_data() -> Result<serde_json::Value, String> {
     let creds = credentials::Credentials::load()?;
     let token = &creds.claude_ai_oauth.access_token;
     let tier = creds.tier_display();
@@ -666,10 +669,12 @@ fn main() {
             // same `usage` and `user_data` mutexes as the rest of the app, so
             // MCP read tools see the live state.
             {
+                let app_handle_for_mcp = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     let mcp_state = Arc::new(mcp::PulseMcpState {
                         usage: mcp_usage_arc,
                         user_data: mcp_user_data_arc,
+                        app_handle: app_handle_for_mcp,
                     });
                     match mcp::McpConfig::load_or_generate() {
                         Ok(cfg) => {

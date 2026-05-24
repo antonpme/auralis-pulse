@@ -178,7 +178,23 @@
 - [x] DevTools enabled in release builds (F12 or Ctrl+Shift+I)
 - [x] Light theme dropdown options correctly colored (color-scheme CSS property)
 
-## v1.4.1 (current)
+## v1.4.2 (current)
+
+### MCP Server Integration: Phase 3 write tools
+- [x] **`pulse_send_command(pid, text)`** - inject any text (slash command or natural-language message) into a specific Claude Code session's terminal. Uses the standard per-PID delivery path: `AttachConsole` + `WriteConsoleInputW` with bracketed-paste mode, `SendKeys` fallback for elevated processes.
+- [x] **`pulse_assign_preset(session_id, preset_id)`** - swap a session's alert preset. Validates preset_id against the live library; unknown ids error out with `invalid_params`. Frontend syncs in ~100ms via a `mcp-assign-preset` Tauri event that updates `settings.sessionPresets`, persists to localStorage, and round-trips back to Rust through the normal `sync_user_data` path. Eventually-consistent, no lost writes.
+- [x] **`pulse_refresh_usage`** - force an immediate Anthropic OAuth usage refresh, bypass the periodic 5-minute loop. Returns the fresh usage JSON, emits `usage-updated` so the right panel re-renders without waiting for the next tick.
+- [x] **`pulse_clear_usage_cache`** - wipe `%LOCALAPPDATA%\auralis-pulse\usage-cache.json` and clear the in-memory mirror. Pulse repopulates on next scheduled fetch.
+
+### Plumbing
+- [x] `PulseMcpState` extended with `app_handle: tauri::AppHandle` so MCP write tools can `emit` events to the frontend layer. Required for `pulse_assign_preset` round-trip and for `usage-updated` re-render signals.
+- [x] `fetch_usage_data`, `save_usage_cache`, `usage_cache_path` promoted to `pub(crate)` so `mcp.rs` reuses the canonical helpers instead of duplicating them.
+- [x] Frontend `main.js` listens for `mcp-assign-preset` events. Validates the preset still exists in the library, applies to `settings.sessionPresets`, persists, re-renders, and shows a `"Preset → <Name> (via MCP)"` toast.
+
+### Smoke test coverage
+- [x] `scripts/mcp_smoke.py` extended: expects 10 tools, exercises every write tool (negative cases for send_command + assign_preset, positive case for assign_preset on a live session, clear+refresh sequence).
+
+## v1.4.1
 
 ### MCP Server Integration: Phase 2 read tools
 - [x] **`pulse_list_sessions`** - returns the live session list (PID, session_id, cwd, name, started_at, duration_mins, last_activity_mins, status, alive) as a JSON array string.
