@@ -271,7 +271,13 @@ Pulse queries `DWMWA_EXTENDED_FRAME_BOUNDS` to get the visual rect, computes the
 ## Roadmap
 
 - [x] **v1.3** Custom commands, alert presets, per-PID delivery, auto-compact safety, pin sessions, DWM-aware window pinning, preset chip, modal picker, DOM split for overlay isolation. v1.3.6 bugfix: Anthropic usage API resilience (nullable `resets_at`, refresh error toast, clear-cache button)
-- [ ] **v1.4** Autostart preference persistence + diagnostic file logger (`pulse.log`) shipped in v1.4.0. MCP server integration: Phase 1 foundation (v1.4.0) and Phase 2 five read tools (v1.4.1) shipped; write tools, SSE notifications, Settings UX, and per-client docs land in v1.4.2 – v1.4.5
+- **v1.4** ongoing through v1.4.5:
+  - [x] **v1.4.0** Autostart preference persistence + diagnostic file logger (`pulse.log`) + MCP server foundation (Phase 1)
+  - [x] **v1.4.1** MCP Phase 2: five read tools (`pulse_list_sessions`, `pulse_get_session`, `pulse_get_usage`, `pulse_list_presets`, `pulse_list_commands`) + JS↔Rust state mirror
+  - [ ] **v1.4.2** MCP Phase 3: write tools (`pulse_send_command`, `pulse_assign_preset`, `pulse_refresh_usage`, `pulse_clear_usage_cache`)
+  - [ ] **v1.4.3** MCP Phase 4: SSE notifications (threshold-crossed, session add/remove, usage-updated)
+  - [ ] **v1.4.4** MCP Phase 5: Settings UX tab with copy-button for `claude mcp add`
+  - [ ] **v1.4.5** MCP Phase 6: per-client setup docs (Cursor, Continue, Zed, Claude Desktop)
 - [ ] **v1.5** Cross-platform: macOS (.dmg) via iTerm2 Python API, Linux (.AppImage / .deb) with tmux send-keys, GitHub Actions CI matrix, optional auto-update
 - [ ] **Future** Configurable keyboard shortcuts, session activity timeline, command chains (Crystallize, then wait, then Compact), Discord callback integration, Tailscale plus PWA for remote mobile access, plugin system
 
