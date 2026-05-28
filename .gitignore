@@ -19,3 +19,7 @@ src-tauri/gen/
 # Env
 .env
 .env.local
+
+# Updater artifact: generated per release by scripts/make_latest_json.py,
+# attached to the GitHub release, not source.
+latest.json

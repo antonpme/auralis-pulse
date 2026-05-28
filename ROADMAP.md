@@ -178,7 +178,20 @@
 - [x] DevTools enabled in release builds (F12 or Ctrl+Shift+I)
 - [x] Light theme dropdown options correctly colored (color-scheme CSS property)
 
-## v1.4.6 (current)
+## v1.4.7 (current)
+
+### Auto-update
+
+Pulse updates itself. No more manual reinstall on every patch.
+
+- [x] **Tauri 2 updater plugin** wired in (`tauri-plugin-updater` + `tauri-plugin-process`). On boot and every 6h, Pulse checks `https://github.com/antonpme/auralis-pulse/releases/latest/download/latest.json`, verifies the Ed25519 signature against the public key baked into `tauri.conf.json`, and surfaces a non-silent toast: `Update vX.Y.Z available` with `Install` / `Later`. Chosen over silent auto-install because Pulse monitors live Claude Code sessions; the user decides when to restart.
+- [x] **Install flow.** `Install` downloads and runs the NSIS installer in `passive` mode (small progress bar, no prompts), then relaunches. Two Rust commands: `check_for_update` (returns version + notes, or none) and `install_update` (download, install, restart). Frontend toast system extended with an optional `actions` array for the two buttons.
+- [x] **Signing.** Ed25519 updater key, independent of Windows code-signing. Public key in `tauri.conf.json`, private key kept off-repo in `~/.tauri/`, supplied at build time via `TAURI_SIGNING_PRIVATE_KEY`. `bundle.createUpdaterArtifacts: true` emits the `.sig` next to the installer.
+- [x] **Ship process** now attaches `latest.json` (version + signature + download URL) to each GitHub release alongside the installer.
+
+Bootstrap note: v1.4.7 is the last version installed manually. v1.4.8 onward arrives in-app.
+
+## v1.4.6
 
 ### MCP tab UI cleanup
 
@@ -291,9 +304,9 @@ Pulse can expose session monitoring, command sending, and preset management to M
 - [ ] CI matrix: Windows + macOS + Linux on every push
 
 ### Auto-Update
-- [ ] Tauri updater plugin integration
-- [ ] Update check on startup + periodic
-- [ ] Update notification in tray menu
+- [x] Tauri updater plugin integration *(shipped in v1.4.7)*
+- [x] Update check on startup + periodic (every 6h) *(shipped in v1.4.7)*
+- [x] Update notification via in-app toast with Install / Later *(shipped in v1.4.7; chose toast over tray menu so it surfaces in context)*
 
 ### Configurable Keyboard Shortcuts
 - [ ] Shortcuts editor in settings panel

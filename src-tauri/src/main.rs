@@ -273,6 +273,61 @@ fn fire_threshold_notification(
     Ok(())
 }
 
+/// Serializable update summary returned to the frontend by `check_for_update`.
+#[derive(serde::Serialize)]
+struct UpdateInfo {
+    version: String,
+    notes: Option<String>,
+}
+
+/// Check GitHub releases for a newer Pulse version. Returns `Some` when an
+/// update is available, `None` when up to date. The updater plugin verifies the
+/// Ed25519 signature in `latest.json` against the pubkey in tauri.conf.json
+/// before reporting, so a tampered release is rejected here, not after download.
+#[tauri::command]
+async fn check_for_update(app: tauri::AppHandle) -> Result<Option<UpdateInfo>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await {
+        Ok(Some(update)) => Ok(Some(UpdateInfo {
+            version: update.version.clone(),
+            notes: update.body.clone(),
+        })),
+        Ok(None) => Ok(None),
+        Err(e) => {
+            crate::pulse_log!("updater", "check failed: {}", e);
+            Err(e.to_string())
+        }
+    }
+}
+
+/// Download and install the available update, then relaunch Pulse. Runs the NSIS
+/// installer in "passive" mode (small progress bar, no prompts). Re-checks rather
+/// than carrying an `Update` handle across the command boundary. `app.restart()`
+/// diverges, so this never returns normally on success.
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "No update available".to_string())?;
+
+    crate::pulse_log!("updater", "installing update {}", update.version);
+    update
+        .download_and_install(|_chunk, _total| {}, || {})
+        .await
+        .map_err(|e| {
+            crate::pulse_log!("updater", "install failed: {}", e);
+            e.to_string()
+        })?;
+
+    crate::pulse_log!("updater", "update installed, relaunching");
+    app.restart()
+}
+
 /// Broadcast a Pulse event to every connected MCP client as a
 /// `notifications/message` (logging) notification with structured data
 /// `{ kind, payload }`. No-op when no clients are connected. Used by the
@@ -604,6 +659,8 @@ fn main() {
             Some(vec![]),
         ))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(server_state_tauri.clone())
         .manage(UsageState {
             data: usage_arc.clone(),
@@ -643,7 +700,9 @@ fn main() {
             set_auto_hide,
             resize_window,
             get_autostart,
-            toggle_autostart
+            toggle_autostart,
+            check_for_update,
+            install_update
         ])
         .setup(move |app| {
             // Set app handle in server state

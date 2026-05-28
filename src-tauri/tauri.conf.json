@@ -1,6 +1,6 @@
 {
   "productName": "Auralis Pulse",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "identifier": "com.auralis.pulse",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -17,6 +17,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
@@ -29,5 +30,15 @@
       }
     }
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzMzlCNjJFMjZGOEZGQzEKUldUQi8vZ21Mclk1MDlZZkJ2amtia1hYZjZ3VlpXVVNYWU5QZ05JVnV3VitkYVV2aXRUSFRuNHEK",
+      "endpoints": [
+        "https://github.com/antonpme/auralis-pulse/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
 }

@@ -1665,11 +1665,15 @@ function renderToasts() {
         const cancelBtn = t.cancellable
           ? `<button class="toast-cancel" data-action="cancel-toast" data-toast-id="${t.id}">Cancel</button>`
           : "";
+        const actionBtns = (t.actions || []).map(a =>
+          `<button class="toast-action" data-action="${a.action}" data-toast-id="${t.id}">${a.label}</button>`
+        ).join("");
         return `
           <div class="toast toast-${t.type || 'info'}" data-toast-id="${t.id}">
             <div class="toast-content">
               <span class="toast-message">${t.message}</span>
               ${cancelBtn}
+              ${actionBtns}
             </div>
             ${countdownBar}
           </div>
@@ -1680,9 +1684,9 @@ function renderToasts() {
 }
 
 function showToast(opts) {
-  const { type = "info", message, duration = 3000, cancellable = false, countdown = false, onComplete, onCancel } = opts;
+  const { type = "info", message, duration = 3000, cancellable = false, countdown = false, actions = null, onComplete, onCancel } = opts;
   const id = ++toastCounter;
-  const toast = { id, type, message, duration, cancellable, countdown, onComplete, onCancel, timer: null, cancelled: false, createdAt: Date.now() };
+  const toast = { id, type, message, duration, cancellable, countdown, actions, onComplete, onCancel, timer: null, cancelled: false, createdAt: Date.now() };
   toasts.push(toast);
   if (duration > 0) {
     toast.timer = setTimeout(() => {
@@ -1825,6 +1829,35 @@ listen("mcp-assign-preset", (event) => {
 
 render();
 setInterval(() => { if (currentView === "main") render({ overlays: false }); }, 15000);
+
+// ---- AUTO-UPDATE (v1.4.7) ----
+// Check GitHub releases on boot + every 6h. Non-silent: a persistent toast
+// offers Install / Later so a running session is never restarted out from
+// under the user. The Rust side verifies the Ed25519 signature before this
+// ever reports an update as available.
+async function checkForUpdate() {
+  try {
+    if (toasts.some(t => t.isUpdateToast)) return; // don't stack duplicates
+    const update = await invoke("check_for_update");
+    if (update && update.version) {
+      const tid = showToast({
+        type: "info",
+        message: `Update v${update.version} available`,
+        duration: 0,
+        actions: [
+          { label: "Install", action: "install-update" },
+          { label: "Later", action: "dismiss-toast" },
+        ],
+      });
+      const t = toasts.find(x => x.id === tid);
+      if (t) t.isUpdateToast = true;
+    }
+  } catch (err) {
+    console.warn("[updater] check failed:", err);
+  }
+}
+checkForUpdate();
+setInterval(checkForUpdate, 6 * 60 * 60 * 1000);
 
 // ---- EVENT DELEGATION ----
 document.addEventListener("click", async (e) => {
@@ -1999,6 +2032,26 @@ document.addEventListener("click", async (e) => {
   if (action === "cancel-toast") {
     const id = parseInt(target.dataset.toastId);
     if (!isNaN(id)) cancelToast(id);
+    return;
+  }
+
+  if (action === "dismiss-toast") {
+    const id = parseInt(target.dataset.toastId);
+    if (!isNaN(id)) dismissToast(id);
+    return;
+  }
+
+  // Auto-update (v1.4.7)
+  if (action === "install-update") {
+    const id = parseInt(target.dataset.toastId);
+    if (!isNaN(id)) dismissToast(id);
+    showToast({ type: "info", message: "Downloading update, Pulse will restart...", duration: 0 });
+    try {
+      await invoke("install_update");
+      // On success Pulse relaunches, so we normally never reach here.
+    } catch (err) {
+      showToast({ type: "error", message: `Update failed: ${err}`, duration: 6000 });
+    }
     return;
   }
 
