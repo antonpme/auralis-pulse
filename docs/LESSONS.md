@@ -101,3 +101,31 @@ Required `PulseMcpState` to hold an `AppHandle` (added via Phase 3 refactor). No
 **Rule.** When the same state is mutated by both a periodic loop AND an on-demand tool/command, any notification side-effect must fire from BOTH paths, not just the loop. Otherwise tool-initiated state changes look invisible to subscribers until the next loop tick. This is the same shape as cache-invalidation: the producer always knows when state changed; the schedule never does.
 
 **Bonus.** Diagnostic logging (`broadcast X: sending to N alive peers`, `broadcast X done: success=Y failure=Z`) immediately surfaced the absence of broadcast attempts. Kept it on. At 6 lines per peer per hour during normal operation, the visibility-for-bytes trade is worth it.
+
+---
+
+## 2026-05-28: Auto-update changes the ship ritual and adds a single point of failure (v1.4.7)
+
+**What changed.** Shipping the Tauri 2 updater means every release from v1.4.7 on has a new, non-optional ritual. Miss a step and auto-update silently does nothing (no error, just no update ever appears for users).
+
+**The new ship sequence (do not skip a step):**
+1. Bump `version` in BOTH `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The updater only triggers when `latest.json` `version` is strictly greater than the running app's SemVer.
+2. Build WITH the signing key in the environment:
+   ```bash
+   export TAURI_SIGNING_PRIVATE_KEY=$(cat ~/.tauri/auralis-pulse.key)
+   export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+   npm run tauri build
+   ```
+   Without the env var, `tauri build` still succeeds but produces NO `.sig`, so there is nothing valid to sign `latest.json` with. Silent trap #1.
+3. `python scripts/make_latest_json.py --notes "..."` to assemble `latest.json` from the freshly built `.sig`.
+4. `gh release create vX.Y.Z ... "<installer>.exe" "latest.json"` — attach BOTH. The updater endpoint is `releases/latest/download/latest.json`, so `latest.json` MUST live on the newest release or clients never see the new version. Silent trap #2.
+5. Verify end-to-end: `curl -sL https://github.com/antonpme/auralis-pulse/releases/latest/download/latest.json` and confirm it returns the new version.
+
+**The single point of failure.** The Ed25519 private key at `~/.tauri/auralis-pulse.key` is the ONLY key that can sign updates the installed base will accept (its public half is baked into every shipped binary via `tauri.conf.json`). Lose it and you cannot ship another auto-update: every existing user is stranded and must manually reinstall a build with a new pubkey. Back it up off-machine (password manager / cloud). This is not code, it cannot be regenerated to match what's already deployed.
+
+**Other silent traps.**
+- `bundle.createUpdaterArtifacts: true` must stay on. If it's removed, no `.sig`, same as forgetting the env var.
+- pubkey in `tauri.conf.json` must match the private key used at build time. Mismatch = signature verification fails silently on the client.
+- The updater's Ed25519 signature is INDEPENDENT of Windows code-signing. We don't code-sign, so users still get a SmartScreen warning on the first manual install, but auto-update itself works fine without an Authenticode cert.
+
+**Rule.** Any release mechanism with a cryptographic signature has an off-repo secret that is a hard dependency for the entire installed base. Treat that key like production database credentials: backed up, never committed, and documented so the next person (or the next you) knows the ritual. A checked-in script (`make_latest_json.py`) plus this lesson is the cheapest insurance against a silent broken-update channel.
