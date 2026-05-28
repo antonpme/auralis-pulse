@@ -1910,6 +1910,20 @@ select.field-input optgroup {
   gap: 8px;
 }
 
+/* Stacked settings row: label on top, full-width value below.
+   Used by EXPOSED TOOLS so long tool lists wrap cleanly instead of
+   colliding with the left-hand label. */
+.settings-item-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.settings-item-stacked .settings-item-value {
+  margin-left: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
 .mcp-command-row {
   padding: 10px 12px;
   border-top: 1px solid var(--bg-card-border);
@@ -1930,7 +1944,8 @@ select.field-input optgroup {
   border-radius: 3px;
   color: var(--text-secondary);
   white-space: pre-wrap;
-  word-break: break-all;
+  word-break: normal;
+  overflow-wrap: anywhere;
   user-select: all;
 }
 

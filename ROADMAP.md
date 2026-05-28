@@ -178,7 +178,18 @@
 - [x] DevTools enabled in release builds (F12 or Ctrl+Shift+I)
 - [x] Light theme dropdown options correctly colored (color-scheme CSS property)
 
-## v1.4.5 (current)
+## v1.4.6 (current)
+
+### MCP tab UI cleanup
+
+Polish pass on the Settings -> MCP tab. No protocol or tool changes.
+
+- [x] **Token no longer leaks in the Quick Start command.** The rendered `claude mcp add` command now masks the bearer token (`first6...last4`) until you hit Reveal, matching the Bearer Token group above it. The "Copy full command" button still copies the real token, so paste-into-terminal is unaffected.
+- [x] **Command no longer breaks mid-word.** Swapped `word-break: break-all` for `overflow-wrap: anywhere`, so `Bearer` and `Authorization` stay intact and only the long token wraps. With the token masked, the whole command lays out in two clean lines.
+- [x] **Removed an em-dash from the verify hint** (house style: no em-dashes). Now a colon.
+- [x] **Exposed Tools list wraps cleanly.** Read and Write rows are now stacked (label on top, full-width tool list below), so the six-name Read list no longer collides with its label.
+
+## v1.4.5
 
 ### MCP Server Integration: Phase 6 per-client setup docs
 

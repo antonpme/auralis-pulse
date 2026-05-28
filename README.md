@@ -333,7 +333,7 @@ Claude Desktop's `claude_desktop_config.json` still supports stdio transport onl
 
 </details>
 
-**Quick sanity check.** Once wired, ask the client to call `pulse_ping`. The expected response is `"pong (auralis-pulse v1.4.5)"`. If you see the version string, MCP transport and bearer auth are both healthy.
+**Quick sanity check.** Once wired, ask the client to call `pulse_ping`. The expected response is `"pong (auralis-pulse vX.Y.Z)"`, where the version matches your installed Pulse. If the version string comes back, MCP transport and bearer auth are both healthy.
 
 **Tools available today (v1.4.5):**
 
@@ -405,13 +405,14 @@ Pulse queries `DWMWA_EXTENDED_FRAME_BOUNDS` to get the visual rect, computes the
 ## Roadmap
 
 - [x] **v1.3** Custom commands, alert presets, per-PID delivery, auto-compact safety, pin sessions, DWM-aware window pinning, preset chip, modal picker, DOM split for overlay isolation. v1.3.6 bugfix: Anthropic usage API resilience (nullable `resets_at`, refresh error toast, clear-cache button)
-- **v1.4** ongoing through v1.4.5:
+- **v1.4** ongoing through v1.4.6:
   - [x] **v1.4.0** Autostart preference persistence + diagnostic file logger (`pulse.log`) + MCP server foundation (Phase 1)
   - [x] **v1.4.1** MCP Phase 2: five read tools (`pulse_list_sessions`, `pulse_get_session`, `pulse_get_usage`, `pulse_list_presets`, `pulse_list_commands`) + JS↔Rust state mirror
   - [x] **v1.4.2** MCP Phase 3: four write tools — `pulse_send_command(pid, text)` injects a slash command or natural-language message into a specific Claude Code session, `pulse_assign_preset(session_id, preset_id)` swaps a session's alert ceiling (round-trips through the frontend so localStorage stays consistent), `pulse_refresh_usage` forces an Anthropic OAuth fetch, `pulse_clear_usage_cache` nukes the disk cache. Closes the loop: agents can now act on Pulse, not just read from it.
   - [x] **v1.4.3** MCP Phase 5: new MCP tab inside Settings — shows port, URL, masked token (with Reveal/Hide), one-click copy for the bearer token and the full `claude mcp add` command, plus a summary of exposed tools. No more digging through `mcp.json` to wire a client.
   - [x] **v1.4.4** MCP Phase 4: server-pushed notifications over the MCP `notifications/message` channel. Pulse broadcasts four event kinds with structured `{ kind, payload }` data: `threshold-crossed` (per-preset, fired by the frontend hysteresis loop, carries `session_id`/`pid`/`tier`/`used_tokens`/`limit_tokens`/`preset_name`), `session-added` and `session-removed` (diffed every 30s in the backend session refresh loop), `usage-updated` (after every successful Anthropic OAuth fetch, slim payload with `five_hour_pct`/`weekly_pct`/`sonnet_pct`). Server-side `Peer<RoleServer>` capture in `on_initialized`, transport-closed peers dropped on every broadcast. Connected clients get instant reactions, no polling.
   - [x] **v1.4.5** MCP Phase 6: per-client setup docs. Copy-paste config snippets for Cursor (`.cursor/mcp.json`), Continue (`config.yaml`), Zed (`settings.json`), Claude Desktop (via `mcp-remote` bridge), plus a single `pulse_ping` sanity check shared across all four. Documentation-only; no runtime changes.
+  - [x] **v1.4.6** MCP tab UI cleanup: bearer token in the Quick Start command now masks until Reveal (Copy still emits the real token), command wraps without breaking `Bearer` mid-word, em-dash removed from the verify hint, and the Exposed Tools list stacks cleanly instead of colliding with its label.
 - [ ] **v1.5** Cross-platform: macOS (.dmg) via iTerm2 Python API, Linux (.AppImage / .deb) with tmux send-keys, GitHub Actions CI matrix, optional auto-update
 - [ ] **Future** Configurable keyboard shortcuts, session activity timeline, command chains (Crystallize, then wait, then Compact), Discord callback integration, Tailscale plus PWA for remote mobile access, plugin system
 

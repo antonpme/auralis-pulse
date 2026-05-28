@@ -1431,9 +1431,11 @@ function maskMcpToken(token) {
   return token.slice(0, 6) + "..." + token.slice(-4);
 }
 
-function buildClaudeMcpAddCommand(cfg) {
+function buildClaudeMcpAddCommand(cfg, displayToken) {
   // Single-line form so paste-into-terminal works on Windows cmd, PowerShell, bash, zsh.
-  return `claude mcp add --transport http --scope user auralis-pulse ${cfg.url} --header "Authorization: Bearer ${cfg.token}"`;
+  // displayToken lets the rendered command mask the token while Copy still emits the real one.
+  const token = displayToken != null ? displayToken : cfg.token;
+  return `claude mcp add --transport http --scope user auralis-pulse ${cfg.url} --header "Authorization: Bearer ${token}"`;
 }
 
 async function renderMcpTab() {
@@ -1462,7 +1464,7 @@ async function renderMcpTab() {
 
   const tokenDisplay = mcpTokenRevealed ? escapeHtml(cfg.token) : escapeHtml(maskMcpToken(cfg.token));
   const revealLabel = mcpTokenRevealed ? "Hide token" : "Reveal token";
-  const command = buildClaudeMcpAddCommand(cfg);
+  const command = buildClaudeMcpAddCommand(cfg, mcpTokenRevealed ? cfg.token : maskMcpToken(cfg.token));
 
   return `
     <div class="settings-group">
@@ -1505,17 +1507,17 @@ async function renderMcpTab() {
           <button class="btn btn-secondary" data-action="copy-mcp-command">Copy full command</button>
         </div>
       </div>
-      <div class="settings-group-hint">Paste in any terminal where the <code>claude</code> CLI is installed. Verify with <code>claude mcp list</code> &mdash; should show <code>auralis-pulse: ... &#x2713; Connected</code>.</div>
+      <div class="settings-group-hint">Paste in any terminal where the <code>claude</code> CLI is installed. Verify with <code>claude mcp list</code>: should show <code>auralis-pulse: ... &#x2713; Connected</code>.</div>
     </div>
 
     <div class="settings-group">
       <div class="settings-group-label">EXPOSED TOOLS</div>
       <div class="settings-card">
-        <div class="settings-item">
+        <div class="settings-item settings-item-stacked">
           <span class="settings-item-label">Read</span>
           <span class="settings-item-value">pulse_ping, pulse_list_sessions, pulse_get_session, pulse_get_usage, pulse_list_presets, pulse_list_commands</span>
         </div>
-        <div class="settings-item">
+        <div class="settings-item settings-item-stacked">
           <span class="settings-item-label">Write</span>
           <span class="settings-item-value">pulse_send_command, pulse_assign_preset, pulse_refresh_usage, pulse_clear_usage_cache</span>
         </div>
