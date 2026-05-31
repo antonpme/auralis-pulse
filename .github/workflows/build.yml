@@ -58,6 +58,16 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # This first cross-platform pass only proves the code compiles on each OS.
+      # createUpdaterArtifacts requires the private signing key, which we are
+      # deliberately NOT putting in CI secrets yet. Flip it off at runtime so the
+      # build doesn't demand the key. The committed tauri.conf.json is untouched;
+      # this edit lives only on the runner.
+      - name: Disable updater signing for CI build
+        shell: bash
+        run: |
+          node -e "const fs=require('fs'); const f='src-tauri/tauri.conf.json'; const c=JSON.parse(fs.readFileSync(f)); c.bundle.createUpdaterArtifacts=false; fs.writeFileSync(f, JSON.stringify(c,null,2));"
+
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
