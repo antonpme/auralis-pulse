@@ -116,7 +116,7 @@ Required `PulseMcpState` to hold an `AppHandle` (added via Phase 3 refactor). No
    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
    npm run tauri build
    ```
-   Without the env var, `tauri build` still succeeds but produces NO `.sig`, so there is nothing valid to sign `latest.json` with. Silent trap #1.
+   Without the env var, `tauri build` does NOT silently skip signing - it FAILS: `A public key has been found, but no private key. Make sure to set TAURI_SIGNING_PRIVATE_KEY environment variable.` (Confirmed on a CI Windows runner 2026-05-31. Earlier this note claimed the build succeeds without a .sig; that was wrong. With a pubkey present in tauri.conf.json, the private key is mandatory and the build aborts without it.) Trap #1 is therefore loud, not silent - but it bites in CI where you forget to wire the key as a secret.
 3. `python scripts/make_latest_json.py --notes "..."` to assemble `latest.json` from the freshly built `.sig`.
 4. `gh release create vX.Y.Z ... "<installer>.exe" "latest.json"` — attach BOTH. The updater endpoint is `releases/latest/download/latest.json`, so `latest.json` MUST live on the newest release or clients never see the new version. Silent trap #2.
 5. Verify end-to-end: `curl -sL https://github.com/antonpme/auralis-pulse/releases/latest/download/latest.json` and confirm it returns the new version.
@@ -129,3 +129,17 @@ Required `PulseMcpState` to hold an `AppHandle` (added via Phase 3 refactor). No
 - The updater's Ed25519 signature is INDEPENDENT of Windows code-signing. We don't code-sign, so users still get a SmartScreen warning on the first manual install, but auto-update itself works fine without an Authenticode cert.
 
 **Rule.** Any release mechanism with a cryptographic signature has an off-repo secret that is a hard dependency for the entire installed base. Treat that key like production database credentials: backed up, never committed, and documented so the next person (or the next you) knows the ritual. A checked-in script (`make_latest_json.py`) plus this lesson is the cheapest insurance against a silent broken-update channel.
+
+---
+
+## 2026-05-31: First cross-platform CI proved the build; artifact upload was the only snag (v1.5 groundwork)
+
+**What we proved.** A `workflow_dispatch` GitHub Actions matrix (`tauri-apps/tauri-action`) compiles Pulse on macOS (aarch64 + x86_64), Linux (ubuntu-22.04), and Windows. All four jobs go green. Free on public repos. The Rust code's existing `#[cfg(windows)]` / `#[cfg(not(windows))]` gating paid off: non-Windows compiled with zero source changes. macOS even produced real `.dmg` bundles for both arches; Linux produced `.deb` + `.AppImage`. Build logs show the exact bundle paths, e.g. `src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/Auralis Pulse_1.4.7_x64.dmg`.
+
+**Snag 1 - signing in CI.** `createUpdaterArtifacts: true` makes the build REQUIRE the signing key (it does not silently skip - see the prior lesson). On a CI runner with no key, the Windows job failed. Fix for a pure compile-test: a tiny pre-build step flips `createUpdaterArtifacts` to false at runtime (`node -e` editing the runner's copy of tauri.conf.json), committed config untouched. We deliberately did NOT put the private key in GitHub Secrets - that's a real decision (a copy of the SPOF key living in the cloud) to make consciously when we do signed cross-platform RELEASES, not compile tests.
+
+**Snag 2 - `actions/upload-artifact@v4` would not capture the mac/linux bundles.** This ate three extra CI runs. The bundle exists on the runner at the exact path given, yet `upload-artifact` reports "No files were found." Windows (`target/release/bundle/...`, default target) uploads fine; mac (`target/<triple>/release/bundle/...`) and Linux uploaded nothing. Tried recursive `**` globs and then explicit per-bundle paths read straight from the logs - neither captured the non-default-target paths. Root cause not pinned (likely an `@actions/glob` / common-root quirk with multi-line paths spanning different target dirs).
+
+**The call: stop, because upload-artifact is not on the critical path.** Real cross-platform releases will use `tauri-action`'s built-in release upload (`tagName` / `releaseId`), which knows its own bundle paths and attaches `.dmg`/`.AppImage`/`.deb` directly to the GitHub Release. `upload-artifact` was only a "let me download and eyeball the bundle" convenience. Burning more CI runs to fix a side path while the main path (tauri-action release) sidesteps it entirely is waste.
+
+**Rule.** When a verification step (here: downloading the artifact) keeps failing but the thing it was meant to verify is already proven another way (here: build logs show the bundle was created), stop polishing the verification and bank the proof. Match effort to the critical path: for cross-platform releases, drive uploads through `tauri-action`'s release integration, not `actions/upload-artifact`. Revisit upload-artifact only if we ever genuinely need workflow-artifact downloads (we probably won't).
