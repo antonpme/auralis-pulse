@@ -75,11 +75,18 @@ jobs:
         with:
           args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
+      # Recursive globs by extension. mac bundles land under a target-triple dir
+      # (target/<arch>/release/bundle/dmg/), Windows + Linux under the default
+      # target/release/bundle/. The earlier single-level `*` glob missed the mac
+      # path, so jobs went green but uploaded nothing.
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
           name: pulse-${{ matrix.platform }}-${{ matrix.target || 'default' }}
           path: |
-            src-tauri/target/release/bundle/
-            src-tauri/target/*/release/bundle/
+            src-tauri/target/**/release/bundle/**/*.dmg
+            src-tauri/target/**/release/bundle/**/*.AppImage
+            src-tauri/target/**/release/bundle/**/*.deb
+            src-tauri/target/**/release/bundle/**/*.rpm
+            src-tauri/target/**/release/bundle/**/*.exe
           if-no-files-found: warn
