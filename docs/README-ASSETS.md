@@ -1,6 +1,6 @@
 # README Assets - capture checklist
 
-The new README (currently in `README.draft.md`) references these images. Capture them from the **Mock Studio** (`mock/index.html`) which uses sample data only - no real session names or paths leak into screenshots.
+The README references these images, and they are already captured and live in `docs/` (cover + three theme shots). This file is kept as the capture checklist for REGENERATING assets when the UI changes. Capture from the **Mock Studio** (`mock/index.html`), which uses sample data only - no real session names or paths leak into screenshots.
 
 ## Workflow
 
@@ -48,10 +48,6 @@ Sized smaller, ~600px wide each.
 
 Hard to mock since this needs the real app sending into a real terminal. Capture from the actual app running, with neutral session names visible. Or skip and let the technical explainer in the How-it-works `<details>` carry the weight.
 
-## After all assets are in place
+## Status
 
-1. Verify all files are in `docs/`
-2. Compare against `README.draft.md` paths
-3. Move: `mv README.md README.old.md && mv README.draft.md README.md`
-4. Commit: `docs: rewrite README - cover, theme gallery, restructured features`
-5. Push
+Done. The cover and theme gallery are in `docs/` and the live `README.md` references them. `README.old.md` is the pre-rewrite archive. To regenerate any asset after a UI change, re-capture from the Mock Studio per the steps above and overwrite the file in `docs/` (same filename, so no README edits needed).

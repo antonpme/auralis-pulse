@@ -55,6 +55,7 @@ Most usage tools tell you what already happened. Pulse acts before it happens.
 - **Alert presets per session.** Worker / Architect / Soul roles each have their own ceilings.
 - **Live everything.** Tokens, model, status, 5-hour and weekly burn, Sonnet quota.
 - **MCP server inside.** Expose live session state, usage, presets, and command library to any MCP-aware agent. Other agents can ask "where am I in my context?" and get a real answer.
+- **Updates itself.** From v1.4.7, Pulse checks GitHub releases and installs new versions in-app. Grab it once by hand, never again.
 
 <a id="vs-the-rest"></a>
 
@@ -71,7 +72,7 @@ The Claude Code tooling space is mostly read-only telemetry. Pulse is the only o
 | [ClaudeBar](https://github.com/tddworks/ClaudeBar) | Menu bar | macOS | ✅ | partial | ❌ | ❌ | ❌ |
 | Built-in `/cost`, `/context` | Slash | In-session | on demand | current only | n/a | n/a | ❌ |
 
-**Where Pulse loses, honestly.** Windows-only today (mac + Linux are on the v1.5 roadmap). No retrospective analytics or charts (use ccusage for that). Smaller star count: we just shipped.
+**Where Pulse loses, honestly.** Windows-only today for command delivery (mac + Linux builds already compile in CI; their keystroke delivery is the v1.5 work in progress). No retrospective analytics or charts (use ccusage for that). Smaller star count: we just shipped.
 
 **Where Pulse wins.** Auto-fire commands at thresholds. Per-PID precision. Custom multi-line message injection. An MCP server other agents can read from. Tray-native on Windows, the gap nobody else fills.
 
@@ -200,6 +201,10 @@ Bottom-right of the work area. DWM-aware: handles the invisible 5-8 px shadow ma
 ### Auto-compact safety
 
 Per-session opt-in checkbox. Even if a preset fires `/compact`, it's blocked unless you explicitly allowed it for that session. Defense in depth for long-running agents you don't want auto-compacting on you.
+
+### Auto-update
+
+From v1.4.7, Pulse updates itself. On launch and every few hours it checks GitHub releases, verifies an Ed25519 signature, and surfaces a non-silent toast: `Update vX.Y.Z available` with **Install** / **Later**. You choose the moment, because Pulse is watching live sessions and shouldn't restart out from under you mid-work. Install runs the NSIS installer in passive mode and relaunches. The updater's Ed25519 signature is independent of Windows code-signing, so it works without a paid certificate.
 
 ### MCP server inside
 
@@ -335,7 +340,7 @@ Claude Desktop's `claude_desktop_config.json` still supports stdio transport onl
 
 **Quick sanity check.** Once wired, ask the client to call `pulse_ping`. The expected response is `"pong (auralis-pulse vX.Y.Z)"`, where the version matches your installed Pulse. If the version string comes back, MCP transport and bearer auth are both healthy.
 
-**Tools available today (v1.4.5):**
+**Tools available today (v1.4.7, ten total):**
 
 *Read:*
 
@@ -414,7 +419,11 @@ Pulse queries `DWMWA_EXTENDED_FRAME_BOUNDS` to get the visual rect, computes the
   - [x] **v1.4.5** MCP Phase 6: per-client setup docs. Copy-paste config snippets for Cursor (`.cursor/mcp.json`), Continue (`config.yaml`), Zed (`settings.json`), Claude Desktop (via `mcp-remote` bridge), plus a single `pulse_ping` sanity check shared across all four. Documentation-only; no runtime changes.
   - [x] **v1.4.6** MCP tab UI cleanup: bearer token in the Quick Start command now masks until Reveal (Copy still emits the real token), command wraps without breaking `Bearer` mid-word, em-dash removed from the verify hint, and the Exposed Tools list stacks cleanly instead of colliding with its label.
   - [x] **v1.4.7** Auto-update: Pulse checks GitHub releases on boot and every 6h, verifies an Ed25519 signature, and offers a non-silent `Update vX.Y.Z available [Install] [Later]` toast. Install runs the NSIS installer in passive mode and relaunches. No more manual reinstall on every patch (this is the last version you install by hand).
-- [ ] **v1.5** Cross-platform: macOS (.dmg) via iTerm2 Python API, Linux (.AppImage / .deb) with tmux send-keys, GitHub Actions CI matrix, optional auto-update
+- **v1.5** Cross-platform (in progress):
+  - [x] GitHub Actions CI matrix compiles macOS (`.dmg`, Apple Silicon + Intel), Linux (`.deb` / `.AppImage`), and Windows. All builds green; the Rust code already gates Windows APIs behind `cfg(windows)`.
+  - [ ] macOS command delivery via iTerm2 Python API (currently a "Windows only" stub)
+  - [ ] Linux command delivery via tmux send-keys
+  - [ ] Signed cross-platform releases through `tauri-action` (mac/linux auto-update)
 - [ ] **Future** Configurable keyboard shortcuts, session activity timeline, command chains (Crystallize, then wait, then Compact), Discord callback integration, Tailscale plus PWA for remote mobile access, plugin system
 
 Full plan: [ROADMAP.md](ROADMAP.md)

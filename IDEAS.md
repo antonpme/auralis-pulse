@@ -1,6 +1,7 @@
 # Auralis Pulse - Ideas
 
 Ideas under discussion. Not committed to roadmap yet. Needs research, design, or validation.
+When an idea is validated and scoped, move it to ROADMAP.md. When it ships, delete it from here.
 
 ---
 
@@ -25,55 +26,23 @@ Ideas under discussion. Not committed to roadmap yet. Needs research, design, or
 
 **Prerequisites:** Responsive CSS for mobile viewport, touch-friendly buttons, push notification support via PWA service worker.
 
----
-
-## Custom Commands (Remote Session Control)
-
-**Problem:** Users have custom workflows beyond just "compact". Example: crystallization (saving session knowledge to memory before compaction), running tests, triggering handoffs, etc. Currently requires direct terminal access or Discord bots.
-
-**Concept:** Instead of a single COMPACT button, Pulse offers a command selector + SUBMIT button. Users define custom commands in settings, then send them to any active session.
-
-**How it works:**
-1. Settings -> Custom Commands -> add commands (name + slash command or text)
-   - Example: "Crystallize" -> "/crystallize"
-   - Example: "Compact" -> "/compact"  
-   - Example: "Run tests" -> "run the test suite and report results"
-   - Example: "Handoff" -> "/handoff"
-2. Session card shows: [command dropdown] [SUBMIT]
-3. User picks command, hits submit, command is sent to that CLI session
-4. Session processes it, Pulse shows confirmation when done
-
-**Technical research needed:**
-
-| Platform | Can we send input? | Method | Confidence |
-|----------|-------------------|--------|------------|
-| CLI (terminal) | Likely yes | SendKeys (current compact approach), or stdin pipe, or Tauri shell plugin | High |
-| Claude Desktop | Probably no | No known API to inject user messages into desktop app | Low |
-| VS Code extension | Unknown | VS Code extension API might allow sending to integrated terminal, but requires cooperation from the extension | Needs research |
-
-**Key insight:** This transforms Pulse from a monitor into a remote control. Combined with mobile access, users can orchestrate multiple AI sessions from their phone.
-
-**Design considerations:**
-- Command templates should be shareable (export/import JSON)
-- Some commands need confirmation ("are you sure you want to compact?")
-- Command execution status: pending -> running -> done/failed
-- Commands that produce output: show result summary in Pulse
+**Note:** With the MCP server (v1.4.x) already exposing session state + control over HTTP, a chunk of the "serve control remotely" plumbing now exists. A mobile client could talk MCP directly instead of a bespoke PWA. Worth weighing before building a separate UI.
 
 ---
 
 ## Potential Future Ideas (raw, unfiltered)
 
-- **Session numbering** - Show #1, #2, #3 on left side of session cards for quick reference
-- **Session sorting** - Sort by context %, session duration, or idle time. Dropdown or toggle in SESSIONS header
-- **Project filter** - Filter sessions by project/cwd. Useful when 10+ sessions running
-- **Session grouping** - Group related sessions (e.g., "frontend" + "backend" + "tests")
-- **Cost tracker** - Estimate $ spent per session based on token counts and model pricing
+Not yet built. (Session numbering, sorting, project filter, and the custom-commands library all shipped in v1.2-v1.3 and have moved out of this list.)
+
+- **Cost tracker** - Estimate $ spent per session based on token counts and model pricing. Caveat: on a Max/CloudMax subscription this is largely irrelevant (flat fee), so it mainly serves pay-per-token API users.
 - **Session templates** - Quick-launch Claude Code with predefined cwd + name + permissions
+- **Session grouping** - Group related sessions (e.g., "frontend" + "backend" + "tests")
 - **Notification rules** - "Notify me only when context > 80%" or "only for Bash permissions"
-- **Session recording** - Save session timeline (when compacted, when permissions asked, etc.)
-- **Multi-machine** - Monitor Claude Code on multiple computers (home + work)
-- **API for integrations** - Let other tools query Pulse (n8n, Raycast, Stream Deck)
+- **Session recording** - Save session timeline (when compacted, when permissions asked, etc.). Overlaps with the "session activity timeline" item on the roadmap.
+- **Multi-machine** - Monitor Claude Code on multiple computers (home + work). The MCP server already gives a remote read/control surface to build on.
+- **API for integrations** - Let other tools query Pulse (n8n, Raycast, Stream Deck). Largely subsumed by the MCP server now; this would be thin REST/webhook adapters on top for tools that don't speak MCP.
+- **Command chains** - Crystallize, then wait for a "ready" signal, then Compact. Already noted on the roadmap's Future list; needs a completion-detection mechanism.
 
 ---
 
-*This file is for brainstorming. When an idea is validated and scoped, move it to ROADMAP.md.*
+*This file is for brainstorming. When an idea is validated and scoped, move it to ROADMAP.md. When it ships, remove it from here so the list stays honest about what's still open.*
