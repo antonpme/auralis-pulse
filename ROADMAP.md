@@ -178,7 +178,35 @@
 - [x] DevTools enabled in release builds (F12 or Ctrl+Shift+I)
 - [x] Light theme dropdown options correctly colored (color-scheme CSS property)
 
-## v1.4.7 (current)
+## v1.4.8 (current)
+
+### Fable 5 model detection (+ first live auto-update)
+
+Bugfix Ton hit: Pulse did not recognise the new Fable 5 model. It showed a raw
+name and a 200K ceiling instead of 1M. Two root causes in `context.rs`
+`parse_model_string`, both fixed:
+
+- [x] **`fable` added as a known family.** Previously only opus/sonnet/haiku were
+  recognised; `claude-fable-5` fell into the unknown-family branch (raw name, 200K).
+- [x] **Context window is now marker-driven, not family-driven.** The 1M beta is
+  signalled by a `[1m]` marker in the id (e.g. `claude-opus-4-8[1m]`); when present
+  it forces 1M for any family. Fable carries no marker, but CLI Fable was confirmed
+  via `/context` (Claude Code v2.1.175) to default to a 1M window, so `claude-fable-5`
+  maps to 1M. Result: `fable-5[1m]`, 1M ceiling.
+- [x] **Label surfaces the 1M window** (`fable-5[1m]`, `opus-4-8[1m]`) when there is
+  positive evidence (explicit marker or fable). Bare opus keeps its soft 1M default
+  with an unmarked label.
+- [x] **Bonus:** fixed an adjacent label-truncation bug where `claude-opus-4-8[1m]`
+  rendered as `opus-4` (the `8[1m]` segment broke version parsing). Marker is now
+  stripped before version extraction.
+- [x] **8 unit tests** added for `parse_model_string` to guard against model-string
+  drift (same class of breakage as the nullable `resets_at` regression).
+
+This patch doubles as the **first live auto-update test**: v1.4.7 taught Pulse to
+self-update, and v1.4.8 is the first version expected to arrive in-app via the
+`Update available [Install]` toast.
+
+## v1.4.7
 
 ### Auto-update
 

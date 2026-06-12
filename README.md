@@ -410,7 +410,7 @@ Pulse queries `DWMWA_EXTENDED_FRAME_BOUNDS` to get the visual rect, computes the
 ## Roadmap
 
 - [x] **v1.3** Custom commands, alert presets, per-PID delivery, auto-compact safety, pin sessions, DWM-aware window pinning, preset chip, modal picker, DOM split for overlay isolation. v1.3.6 bugfix: Anthropic usage API resilience (nullable `resets_at`, refresh error toast, clear-cache button)
-- **v1.4** ongoing through v1.4.7:
+- **v1.4** ongoing through v1.4.8:
   - [x] **v1.4.0** Autostart preference persistence + diagnostic file logger (`pulse.log`) + MCP server foundation (Phase 1)
   - [x] **v1.4.1** MCP Phase 2: five read tools (`pulse_list_sessions`, `pulse_get_session`, `pulse_get_usage`, `pulse_list_presets`, `pulse_list_commands`) + JS↔Rust state mirror
   - [x] **v1.4.2** MCP Phase 3: four write tools — `pulse_send_command(pid, text)` injects a slash command or natural-language message into a specific Claude Code session, `pulse_assign_preset(session_id, preset_id)` swaps a session's alert ceiling (round-trips through the frontend so localStorage stays consistent), `pulse_refresh_usage` forces an Anthropic OAuth fetch, `pulse_clear_usage_cache` nukes the disk cache. Closes the loop: agents can now act on Pulse, not just read from it.
@@ -419,6 +419,7 @@ Pulse queries `DWMWA_EXTENDED_FRAME_BOUNDS` to get the visual rect, computes the
   - [x] **v1.4.5** MCP Phase 6: per-client setup docs. Copy-paste config snippets for Cursor (`.cursor/mcp.json`), Continue (`config.yaml`), Zed (`settings.json`), Claude Desktop (via `mcp-remote` bridge), plus a single `pulse_ping` sanity check shared across all four. Documentation-only; no runtime changes.
   - [x] **v1.4.6** MCP tab UI cleanup: bearer token in the Quick Start command now masks until Reveal (Copy still emits the real token), command wraps without breaking `Bearer` mid-word, em-dash removed from the verify hint, and the Exposed Tools list stacks cleanly instead of colliding with its label.
   - [x] **v1.4.7** Auto-update: Pulse checks GitHub releases on boot and every 6h, verifies an Ed25519 signature, and offers a non-silent `Update vX.Y.Z available [Install] [Later]` toast. Install runs the NSIS installer in passive mode and relaunches. No more manual reinstall on every patch (this is the last version you install by hand).
+  - [x] **v1.4.8** Fable 5 model detection: recognises the new `claude-fable-5` (was showing a raw name + 200K), maps it to its confirmed 1M window, and surfaces a `[1m]` marker in the label. Context window is now driven by the `[1m]` marker rather than hardcoded per family. Plus 8 unit tests for the model parser. First version delivered via auto-update.
 - **v1.5** Cross-platform (in progress):
   - [x] GitHub Actions CI matrix compiles macOS (`.dmg`, Apple Silicon + Intel), Linux (`.deb` / `.AppImage`), and Windows. All builds green; the Rust code already gates Windows APIs behind `cfg(windows)`.
   - [ ] macOS command delivery via iTerm2 Python API (currently a "Windows only" stub)

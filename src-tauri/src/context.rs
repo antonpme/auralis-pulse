@@ -112,24 +112,60 @@ fn read_post_compaction_lines(path: &PathBuf) -> Vec<String> {
 /// (version-family-date, e.g. "claude-3-5-sonnet-20240620") formats.
 fn parse_model_string(raw: &str) -> (String, u64) {
     let lower = raw.to_lowercase();
+
+    // The 1M-context beta is signalled by a "[1m]" marker in the model id
+    // (e.g. "claude-opus-4-8[1m]"). When present it is authoritative for ANY
+    // family; when absent we fall back to per-family defaults below. This is
+    // the real signal for the 1M window - it is NOT a property of the family.
+    let has_1m_marker = lower.contains("[1m]");
+
     let family = if lower.contains("opus") {
         "opus"
     } else if lower.contains("sonnet") {
         "sonnet"
     } else if lower.contains("haiku") {
         "haiku"
+    } else if lower.contains("fable") {
+        "fable"
     } else {
-        // Unknown family - show raw (stripped of "claude-" prefix)
+        // Unknown family - show raw (stripped of "claude-" prefix). Still honour
+        // an explicit [1m] marker so a brand-new family at least gets its window
+        // right even before we teach the parser its name.
         let stripped = raw.strip_prefix("claude-").unwrap_or(raw);
-        return (stripped.to_string(), 200_000);
+        let max = if has_1m_marker { 1_000_000 } else { 200_000 };
+        return (stripped.to_string(), max);
     };
 
-    // Max context per family. Opus 4+ is 1M (beta); earlier Opus were 200K.
-    // We pick 1M for opus since modern builds are all 4+. For sonnet/haiku always 200K.
-    let max_tokens = if family == "opus" { 1_000_000 } else { 200_000 };
+    // Context window.
+    //
+    // An explicit [1m] marker forces 1M for any family. Opus uses this: its 1M
+    // build writes "claude-opus-4-8[1m]" while the 200K build writes plain
+    // "claude-opus-4-8", so the marker cleanly distinguishes the two.
+    //
+    // Fable carries NO marker: both the picker's "Fable 5" and "Fable 5 (1M
+    // context)" write the same bare "claude-fable-5". We cannot tell them apart
+    // from the id. But CLI Fable was confirmed via `/context` (2026-06-12,
+    // Claude Code v2.1.175) to default to a 1M window ("33k/1m tokens",
+    // "Free space: 967k"). Since the CLI is what Pulse primarily monitors, we
+    // default fable to 1M. Known limitation: someone on a 200K Fable build (if
+    // one exists) would be shown a 1M ceiling; there is no transcript signal to
+    // detect that, and 1M is the confirmed CLI default.
+    //
+    // opus also defaults 1M when unmarked (modern 4+ builds); sonnet and haiku
+    // default to 200K (a 1M build of either would carry the marker, caught above).
+    let max_tokens = if has_1m_marker || family == "opus" || family == "fable" {
+        1_000_000
+    } else {
+        200_000
+    };
+
+    // Strip the "[1m]" marker before walking version parts, otherwise it corrupts
+    // the trailing segment (e.g. "8[1m]" is not a clean version number and the
+    // label would truncate to "opus-4" instead of "opus-4-8").
+    let cleaned = raw.split('[').next().unwrap_or(raw);
 
     // Walk the dash-separated parts to extract version numbers.
-    let parts: Vec<&str> = raw.split('-').collect();
+    let parts: Vec<&str> = cleaned.split('-').collect();
     let family_idx = parts.iter().position(|p| p.to_lowercase() == family);
 
     let is_date = |s: &str| s.len() == 8 && s.chars().all(|c| c.is_ascii_digit());
@@ -159,6 +195,16 @@ fn parse_model_string(raw: &str) -> (String, u64) {
         family.to_string()
     } else {
         format!("{}-{}", family, version_parts.join("-"))
+    };
+
+    // Surface the 1M window in the label when we have POSITIVE evidence: an
+    // explicit "[1m]" marker (opus 1M build), or fable (confirmed 1M on CLI).
+    // Bare opus defaults to 1M only as a soft assumption, so we leave its label
+    // unmarked rather than claim a marker the id never carried.
+    let label = if has_1m_marker || family == "fable" {
+        format!("{}[1m]", label)
+    } else {
+        label
     };
 
     (label, max_tokens)
@@ -279,4 +325,57 @@ pub fn get_context(session_id: &str) -> Option<ContextInfo> {
         turn_count,
         compaction_count,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_model_string;
+
+    #[test]
+    fn fable_5_is_recognised_and_1m() {
+        // The reported bug: Fable 5 showed as 200K and a raw name. CLI Fable was
+        // confirmed 1M via /context, and we surface the [1m] marker in the label.
+        assert_eq!(parse_model_string("claude-fable-5"), ("fable-5[1m]".to_string(), 1_000_000));
+    }
+
+    #[test]
+    fn fable_shorthand() {
+        assert_eq!(parse_model_string("fable"), ("fable[1m]".to_string(), 1_000_000));
+    }
+
+    #[test]
+    fn opus_1m_marker_is_authoritative_and_label_is_clean() {
+        // The [1m] marker forces 1M, must not corrupt the version label, and is
+        // re-surfaced as a clean "[1m]" suffix.
+        assert_eq!(parse_model_string("claude-opus-4-8[1m]"), ("opus-4-8[1m]".to_string(), 1_000_000));
+    }
+
+    #[test]
+    fn opus_without_marker_keeps_1m_default_but_unmarked_label() {
+        // Bare opus is a soft 1M default - 1M ceiling, but no [1m] in the label
+        // since the id never carried one.
+        assert_eq!(parse_model_string("claude-opus-4-8"), ("opus-4-8".to_string(), 1_000_000));
+    }
+
+    #[test]
+    fn sonnet_defaults_200k_but_marker_wins() {
+        assert_eq!(parse_model_string("claude-sonnet-4-6"), ("sonnet-4-6".to_string(), 200_000));
+        assert_eq!(parse_model_string("claude-sonnet-4-6[1m]"), ("sonnet-4-6[1m]".to_string(), 1_000_000));
+    }
+
+    #[test]
+    fn haiku_defaults_200k() {
+        assert_eq!(parse_model_string("claude-haiku-4-5-20251001"), ("haiku-4-5".to_string(), 200_000));
+    }
+
+    #[test]
+    fn legacy_format_still_parses() {
+        assert_eq!(parse_model_string("claude-3-5-sonnet-20240620"), ("sonnet-3-5".to_string(), 200_000));
+    }
+
+    #[test]
+    fn unknown_family_honours_marker() {
+        assert_eq!(parse_model_string("claude-newmodel-9"), ("newmodel-9".to_string(), 200_000));
+        assert_eq!(parse_model_string("claude-newmodel-9[1m]"), ("newmodel-9[1m]".to_string(), 1_000_000));
+    }
 }
