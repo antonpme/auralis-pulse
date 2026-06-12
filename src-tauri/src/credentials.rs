@@ -27,6 +27,17 @@ impl Credentials {
             .map_err(|e| format!("Failed to parse credentials: {}", e))
     }
 
+    // Windows + Linux: Claude Code writes credentials to a flat file at
+    // ~/.claude/.credentials.json.
+    //
+    // macOS (v1.5 TODO): there is NO flat file. Claude Code stores the same JSON
+    // blob in the login Keychain under a generic-password item named
+    // "Claude Code-credentials". Read it by shelling out:
+    //     security find-generic-password -s 'Claude Code-credentials' -w
+    // (-w prints just the password field, which is the JSON blob.) Parse the
+    // output with the same serde structs below. This is THE bit that breaks the
+    // Windows->Mac port. Intel from m13v (github.com/m13v/claude-meter); verify
+    // the exact service name + that -w returns the raw blob when implementing.
     fn credentials_path() -> Result<PathBuf, String> {
         let home = dirs::home_dir().ok_or("Cannot find home directory")?;
         Ok(home.join(".claude").join(".credentials.json"))
